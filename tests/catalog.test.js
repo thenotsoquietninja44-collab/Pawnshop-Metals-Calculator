@@ -2,11 +2,11 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const Catalog=require('../src/catalog');
 const {calculate}=require('../src/pricing');
-const config=()=>({coins:Catalog.defaults(),premiums:{Silver:'25',Gold:'0',Platinum:'0'},side:'ask',autoRefresh:true,compactCoinIds:[]});
+const config=()=>({coins:Catalog.defaults(),premiums:{Silver:'25',Gold:'0',Platinum:'0'},side:'ask',autoRefresh:true,compactCoinIds:[],catalogVersion:1});
 test('catalog contains all named coins with validated specifications',()=>{
   const coins=Catalog.validateCoins(Catalog.defaults());
   for(const id of ['silver-eagle','morgan-dollar','peace-dollar','walking-half','washington-quarter','roosevelt-dime']) assert.ok(coins.find(c=>c.id===id));
-  assert.equal(coins.length,18);
+  assert.equal(coins.length,25);
 });
 test('90% dime: 2.5g gross gives 2.25g fine and an exact percentage quote',()=>{
   const dime=Catalog.defaults().find(c=>c.id==='roosevelt-dime');
