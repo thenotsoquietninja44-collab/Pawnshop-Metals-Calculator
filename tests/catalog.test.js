@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const Catalog=require('../src/catalog');
 const {calculate}=require('../src/pricing');
-const config=()=>({coins:Catalog.defaults(),premiums:{Silver:'25',Gold:'0',Platinum:'0'},side:'ask',autoRefresh:true});
+const config=()=>({coins:Catalog.defaults(),premiums:{Silver:'25',Gold:'0',Platinum:'0'},side:'ask',autoRefresh:true,compactCoinIds:[]});
 test('catalog contains all named coins with validated specifications',()=>{
   const coins=Catalog.validateCoins(Catalog.defaults());
   for(const id of ['silver-eagle','morgan-dollar','peace-dollar','walking-half','washington-quarter','roosevelt-dime']) assert.ok(coins.find(c=>c.id===id));
