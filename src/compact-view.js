@@ -2,7 +2,6 @@
 'use strict';
 function showView(view) {
   document.body.classList.toggle('compact-active',view==='compact');
-  $('marketDetails').open=view==='editor';
   $('compactView').hidden=view!=='compact'; $('editorView').hidden=view!=='editor';
   $('showCompact').setAttribute('aria-pressed',String(view==='compact'));
   $('showEditor').setAttribute('aria-pressed',String(view==='editor'));
@@ -14,9 +13,10 @@ function drawChoices() {
   const query=$('compactSearch').value.toLowerCase();
   const kind=$('compactKind').value;
   $('coinChoices').replaceChildren(...(settings.coins || []).filter(c=>(kind==='all' || Catalog.isGeneric(c)===(kind==='generic')) && (c.name+' '+c.notes).toLowerCase().includes(query)).map(coin=>{
-    const label=document.createElement('label'); label.className='coin-choice';
+    const label=document.createElement('label'); label.className='coin-choice';label.dataset.metal=coin.metal;
     const check=document.createElement('input'); check.type='checkbox'; check.value=coin.id; check.checked=chosenDraft.has(coin.id);
     const name=document.createElement('span'); name.textContent=coin.name;
+    const badge=document.createElement('span');badge.className='metal-badge';badge.textContent=coin.metal;name.prepend(badge);
     const premium=document.createElement('small'); premium.textContent='Spot + '+coin.premium+(coin.premiumType==='percent'?'%':' USD / coin'); name.append(premium);
     check.addEventListener('change',()=>{
       if(check.checked) chosenDraft.add(coin.id); else chosenDraft.delete(coin.id);
@@ -45,14 +45,14 @@ function renderCompact() {
   $('chosenCount').textContent=`${chosenDraft.size} chosen coins / ${groups.length} grouped rows`;
   $('compactEmpty').hidden=groups.length>0;
   $('compactRows').replaceChildren(...groups.map(group=>{
-    const tr=document.createElement('tr'); tr.dataset.members=group.coins.map(c=>c.id).join(',');
+    const tr=document.createElement('tr'); tr.dataset.members=group.coins.map(c=>c.id).join(',');tr.dataset.metal=group.metal;
     const names=document.createElement('td'), aliases=document.createElement('div'); aliases.className='compact-aliases';
     for(const coin of group.coins) {
       const button=document.createElement('button'); button.className='compact-name';
       button.textContent=Catalog.isGeneric(coin)?coin.name:coin.name.replace(/\s*\([^)]*\)/g,''); button.title=coin.name+' - click to edit';
       button.addEventListener('click',()=>{ applyCoin(coin); showView('editor'); $('coinName').focus(); }); aliases.append(button);
     }
-    names.append(aliases);
+    const badge=document.createElement('span');badge.className='metal-badge';badge.textContent=group.metal;names.append(badge,aliases);
     const content=document.createElement('td'); content.textContent=group.contentLabel;
     const calc=document.createElement('td'), equation=document.createElement('div'); equation.className='compact-equation'; equation.textContent=group.equation; calc.append(equation);
     if(group.error) { const error=document.createElement('p'); error.className='compact-row-error'; error.textContent=group.error; calc.append(error); }

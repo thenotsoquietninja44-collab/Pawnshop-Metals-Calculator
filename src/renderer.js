@@ -12,6 +12,7 @@ function drawCatalog() {
   $('coinList').replaceChildren(...(settings.coins || []).filter(c=>(kind==='all' || Catalog.isGeneric(c)===(kind==='generic')) && (c.name+' '+c.notes).toLowerCase().includes(query)).map(c=>{
     const option = document.createElement('option'); option.value=c.id;
     option.textContent=c.name+' | +'+c.premium+(c.premiumType === 'percent' ? '%' : ' USD/coin');
+    option.dataset.metal=c.metal;option.textContent=c.metal+' | '+option.textContent;
     option.selected=c.id === currentCoinId; return option;
   }));
   if (currentCoinId) $('coinList').value=currentCoinId;
@@ -44,7 +45,7 @@ const usd = value => {
 function showPrices(state) {
   priceState = state;
   $('cards').replaceChildren(...metals.map(metal => {
-    const card = document.createElement('article'); card.className = 'metal-card';
+    const card = document.createElement('article'); card.className = 'metal-card';card.dataset.metal=metal;
     const h = document.createElement('h3'); h.textContent = metal.toUpperCase();
     const price = state.snapshot?.prices?.[metal];
     const strong = document.createElement('strong'); strong.textContent = price ? usd(price[settings.side]) : '—';
@@ -56,10 +57,31 @@ function showPrices(state) {
   $('refresh').textContent = state.busy ? 'Refreshing…' : 'Refresh prices';
   calculate();
   renderCompact();
+  renderPurities();
+}
+function renderPurities(){
+  const manual=$('gramMode').value==='manual';
+  for(const metal of metals)$('gram'+metal).disabled=!manual;
+  $('gramSource').textContent=manual?'MANUAL USD / fine troy ounce — each metal entered separately.':`APMEX ${settings.side.toUpperCase()} — ${priceState.snapshot?.sourceTime || 'Waiting for prices'}${priceState.fresh && !priceState.error?'':' — automatic prices blocked'}`;
+  $('gramCards').replaceChildren(...metals.map(metal=>{
+    const card=document.createElement('article');card.className='purity-card';card.dataset.metal=metal;
+    const heading=document.createElement('h3');heading.className='metal-heading';heading.textContent=metal;card.append(heading);
+    const table=document.createElement('table');table.className='purity-table';table.setAttribute('aria-label',metal+' melt value per gram');
+    const head=document.createElement('thead'),hr=document.createElement('tr');
+    for(const text of ['Purity / calculation','USD / gram']){const th=document.createElement('th');th.scope='col';th.textContent=text;hr.append(th);}head.append(hr);table.append(head);
+    const rows=Purities.rows(metal,{spot:manual?$('gram'+metal).value:priceState.snapshot?.prices?.[metal]?.[settings.side],fresh:manual || !!priceState.fresh,error:manual?'':priceState.error});
+    const body=document.createElement('tbody');
+    for(const row of rows){const tr=document.createElement('tr'),name=document.createElement('td'),price=document.createElement('td'),factor=document.createElement('small');
+      name.textContent=row.label;factor.textContent=row.equation;name.append(factor);price.textContent=row.price?usd(row.price):'—';price.title=row.error || row.equation+' = '+usd(row.price)+'/g';tr.dataset.label=row.label;tr.append(name,price);body.append(tr);}
+    table.append(body);card.append(table);
+    if(rows.some(r=>r.error)){const status=document.createElement('p');status.className='purity-error';status.textContent=manual?'Enter a valid '+metal.toLowerCase()+' spot price above.':'APMEX unavailable or stale. Refresh or use verified manual prices.';card.append(status);}
+    return card;
+  }));
 }
 function calculate() {
   result = null; quoteText = '';
   const metal = $('metal').value, manual = $('mode').value === 'manual', gross = $('weightMode').value === 'gross';
+  $('quote').dataset.metal=metal;document.querySelector('.result').dataset.metal=metal;$('coinList').dataset.metal=metal;
   const useKarat = gross && metal === 'Gold' && $('karat').value;
   const dollarPremium = $('premiumType').value === 'dollars';
   $('premiumLabel').textContent=dollarPremium ? 'Dollars added per coin ($)' : 'Premium above spot (%)';
@@ -120,13 +142,20 @@ $('widget').addEventListener('click', () => desktop.openWidget());
 function showUpdate(state) {
   $('updateMessage').textContent = state.message; $('install').hidden = state.status !== 'ready'; $('updates').disabled = ['checking', 'downloading','installing'].includes(state.status);
   if(['ready','error','installing'].includes(state.status))$('updateCenter').open=true;
+  $('headerCheckUpdate').disabled=['checking','downloading','installing'].includes(state.status);
+  $('headerUpdateStatus').textContent=state.message;
 }
-$('updates').addEventListener('click', async () => showUpdate(await desktop.checkUpdate()));
+async function requestUpdate(){try{showUpdate(await desktop.checkUpdate());}catch(e){showUpdate({status:'error',message:'Update check failed: '+e.message});}}
+$('updates').addEventListener('click',requestUpdate);
+$('headerCheckUpdate').addEventListener('click',requestUpdate);
+$('gramMode').addEventListener('change',renderPurities);
+for(const metal of metals)$('gram'+metal).addEventListener('input',renderPurities);
 $('install').addEventListener('click', async () => {try{await desktop.installUpdate(collectBackupSession());}catch(e){$('backupMessage').textContent='Update could not start: '+e.message;}});
 function collectBackupSession(){
   const quote=Object.fromEntries(['metal','weight','unit','weightMode','purity','karat','premiumType','premium','quantity','manual','mode','coinName','coinNotes'].map(id=>[id,$(id).value]));
   return {capturedAt:new Date().toISOString(),quote,currentCoinId,genericDraft,pendingChosenCoinIds:[...(chosenDraft || [])],
     compactMode:$('compactMode').value,manualCompactSpots:Object.fromEntries(metals.map(m=>[m,$('compact'+m).value])),
+    perGram:{mode:$('gramMode').value,manualSpots:Object.fromEntries(metals.map(m=>[m,$('gram'+m).value]))},
     note:'Unsaved form snapshot for recovery. Verify historical manual spot prices before using them.'};
 }
 function showBackup(state){

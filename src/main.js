@@ -245,6 +245,7 @@ app.whenReady().then(async () => {
       })()`);
       if (result.price !== '$4.69' || result.error) throw Error(JSON.stringify(result));
       const compactCheck=await win.webContents.executeJavaScript(`(async()=>{
+        document.querySelector('#marketDetails').open=false;
         const ids=['silver-eagle','roosevelt-dime','mercury-dime','barber-dime','washington-quarter','standing-quarter','barber-quarter','walking-half','franklin-half','kennedy-1964','morgan-dollar','peace-dollar'];
         settings.coins=settings.coins.map(c=>ids.includes(c.id)?{...c,premium:'25',premiumType:'percent'}:c);
         settings=await desktop.saveSettings(settings);
@@ -290,8 +291,34 @@ app.whenReady().then(async () => {
         if(!document.querySelector('main').inert || document.querySelector('#backupOverlay').hidden)throw Error('Backup did not protect editing');
         showBackup({busy:false,message:'Before installing an update, the full current app and shop data are backed up and verified.'});
         if(document.querySelector('main').inert)throw Error('Backup lock was not released');
-        document.querySelector('#updateCenter').open=true;document.querySelector('#updateCenter').scrollIntoView({block:'start'});
+        document.querySelector('#updateCenter').open=false;
       })()`);
+      await win.webContents.executeJavaScript(`(async()=>{
+        document.querySelector('#headerCheckUpdate').click();await new Promise(r=>setTimeout(r,100));
+        if(!document.querySelector('#headerUpdateStatus').textContent.includes('installed Windows app'))throw Error('Top update button did not check for updates');
+        showUpdate({status:'checking',message:'Checking for updates...'});
+        if(!document.querySelector('#headerCheckUpdate').disabled || !document.querySelector('#updates').disabled)throw Error('Update button state mismatch');
+        showUpdate({status:'current',message:'Example preview — automatic update checks enabled.'});
+        const snapshot={prices:{Silver:{bid:'50.00',ask:'51.02'},Gold:{bid:'2390',ask:'2400'},Platinum:{bid:'1490',ask:'1500'}},sourceTime:'EXAMPLE PRICES',asOf:new Date().toISOString()};
+        showPrices({snapshot,fresh:true,error:''});
+        const row=(metal,label)=>[...document.querySelectorAll('#gramCards [data-metal="'+metal+'"] tbody tr')].find(r=>r.dataset.label===label);
+        if(row('Silver','925 sterling').lastElementChild.textContent!=='$1.52' || row('Gold','14k').lastElementChild.textContent!=='$45.01')throw Error('Live gram conversion failed');
+        settings.side='bid';showPrices({snapshot,fresh:true,error:''});
+        if(row('Silver','925 sterling').lastElementChild.textContent!=='$1.49')throw Error('Gram bid side failed');
+        settings.side='ask';showPrices({snapshot,fresh:false,error:''});
+        if([...document.querySelectorAll('#gramCards tbody tr')].some(r=>r.lastElementChild.textContent!=='—'))throw Error('Stale gram values not blocked');
+        document.querySelector('#gramMode').value='manual';
+        for(const [metal,spot] of [['Silver','51.02'],['Gold','2400'],['Platinum','1500']]){document.querySelector('#gram'+metal).value=spot;document.querySelector('#compact'+metal).value=spot;}
+        renderPurities();if(row('Gold','14k').lastElementChild.textContent!=='$45.01')throw Error('Manual grams failed');
+        showPrices({snapshot,fresh:true,error:''});document.querySelector('#gramMode').value='live';renderPurities();
+        chosenDraft=new Set(['silver-eagle','generic-us-90-dimes','generic-us-90-dollars','generic-gold','generic-platinum']);await saveChosenList();renderCompact();drawChoices();
+        for(const metal of metals){if(!document.querySelector('#cards [data-metal="'+metal+'"]') || !document.querySelector('#compactRows [data-metal="'+metal+'"] .metal-badge') || !document.querySelector('#coinChoices [data-metal="'+metal+'"]'))throw Error('Metal identity missing: '+metal);}
+        applyCoin(settings.coins.find(c=>c.metal==='Platinum'));if(document.querySelector('.result').dataset.metal!=='Platinum')throw Error('Quote metal theme failed');
+        showView('compact');document.querySelector('#compactMessage').textContent='Example manual spots: silver $51.02, gold $2,400, platinum $1,500 per troy ounce.';
+        document.querySelector('#compactView').scrollIntoView({block:'start'});
+      })()`);
+      fs.writeFileSync(path.join(process.cwd(),'coins-preview.png'),(await win.webContents.capturePage()).toPNG());
+      await win.webContents.executeJavaScript(`document.querySelector('#marketDetails').open=true;document.querySelector('#gramDetails').open=true;window.scrollTo(0,0);`);
       const preview = await win.webContents.capturePage();
       fs.writeFileSync(path.join(process.cwd(), 'app-preview.png'), preview.toPNG());
       app.exit(0);
