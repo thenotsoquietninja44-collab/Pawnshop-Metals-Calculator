@@ -317,8 +317,9 @@ app.whenReady().then(async () => {
         showView('compact');document.querySelector('#compactMessage').textContent='Example manual spots: silver $51.02, gold $2,400, platinum $1,500 per troy ounce.';
         document.querySelector('#compactView').scrollIntoView({block:'start'});
       })()`);
+      await win.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(resolve,150))))');
       fs.writeFileSync(path.join(process.cwd(),'coins-preview.png'),(await win.webContents.capturePage()).toPNG());
-      await win.webContents.executeJavaScript(`document.querySelector('#marketDetails').open=true;document.querySelector('#gramDetails').open=true;window.scrollTo(0,0);`);
+      await win.webContents.executeJavaScript(`(async()=>{document.querySelector('#marketDetails').open=true;document.querySelector('#gramDetails').open=true;window.scrollTo(0,0);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(resolve,150))));})()`);
       const preview = await win.webContents.capturePage();
       fs.writeFileSync(path.join(process.cwd(), 'app-preview.png'), preview.toPNG());
       app.exit(0);
