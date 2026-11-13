@@ -1,6 +1,8 @@
 // Loaded after the editor renderer; uses the same validated saved settings and spot state.
 'use strict';
 function showView(view) {
+  document.body.classList.toggle('compact-active',view==='compact');
+  $('marketDetails').open=view==='editor';
   $('compactView').hidden=view!=='compact'; $('editorView').hidden=view!=='editor';
   $('showCompact').setAttribute('aria-pressed',String(view==='compact'));
   $('showEditor').setAttribute('aria-pressed',String(view==='editor'));
@@ -32,6 +34,8 @@ function compactSpots() {
     else spots[metal]={error:priceState.error || 'APMEX is unavailable or stale. Refresh or choose manual prices.'};
   }
   $('compactSource').textContent=manual?'MANUAL PRICES - entered separately for each metal. APMEX refreshes will not overwrite these values.':`APMEX ${settings.side.toUpperCase()} - ${priceState.snapshot?.sourceTime || 'Waiting for prices'}${priceState.fresh && !priceState.error?'':' - automatic quotes blocked'}`;
+  $('compactPriceSummary').textContent=manual?'Manual spot prices (change)':'APMEX '+settings.side.toUpperCase()+' spot prices (change)';
+  $('compactRefresh').disabled=!!priceState.busy;
   return spots;
 }
 function renderCompact() {
@@ -65,6 +69,8 @@ async function saveChosenList() {
   $('coinChooser').open=false;
 }
 function initializeCompactView() {
+showView('compact');
+$('compactRefresh').addEventListener('click',async()=>{try{showPrices(await desktop.refresh());}catch(e){$('compactMessage').textContent=e.message;}});
 $('showCompact').addEventListener('click',()=>{showView('compact');renderCompact();});
 $('showEditor').addEventListener('click',()=>showView('editor'));
 $('chooseCoins').addEventListener('click',()=>{$('coinChooser').open=!$('coinChooser').open;});

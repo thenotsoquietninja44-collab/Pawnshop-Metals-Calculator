@@ -183,6 +183,9 @@ app.whenReady().then(async () => {
         document.querySelector('#compactMode').value='manual';renderCompact();
         document.querySelector('#compactMessage').textContent='Example list using a manually entered $51.02 silver spot price.';
         document.querySelector('#coinChooser').open=false;
+        document.querySelector('#compactPriceControls').open=false;
+        if(document.querySelector('#compactRows tr').getBoundingClientRect().top>=innerHeight)throw Error('Compact coin rows are below the visible window');
+        document.querySelector('#compactView').scrollIntoView({block:'start'});
         return rows.length;
       })()`);
       console.log('Compact list renderer checks passed:',compactCheck,'grouped rows');
