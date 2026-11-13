@@ -3,6 +3,34 @@ const $ = id => document.getElementById(id);
 const metals = ['Silver', 'Gold', 'Platinum'];
 let settings = { premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true };
 let priceState = {}, result = null, quoteText = '';
+let currentCoinId = null;
+function drawCatalog() {
+  const query = $('coinSearch').value.toLowerCase();
+  $('coinList').replaceChildren(...(settings.coins || []).filter(c=>(c.name+' '+c.notes).toLowerCase().includes(query)).map(c=>{
+    const option = document.createElement('option'); option.value=c.id;
+    option.textContent=c.name+' | +'+c.premium+(c.premiumType === 'percent' ? '%' : ' USD/coin');
+    option.selected=c.id === currentCoinId; return option;
+  }));
+  if (currentCoinId) $('coinList').value=currentCoinId;
+}
+function applyCoin(coin) {
+  currentCoinId=coin?.id || null;
+  if (!coin) return;
+  for (const id of ['metal','weight','unit','weightMode','purity','karat','premiumType','premium']) $(id).value=coin[id];
+  $('coinName').value=coin.name; $('coinNotes').value=coin.notes; $('quantity').value='1';
+  $('coinInfo').textContent=coin.notes;
+  $('catalogMessage').textContent='Saved coin loaded. Edit any numbers below, then save to keep your changes.';
+  drawCatalog(); calculate();
+}
+function coinDraft() {
+  const old=(settings.coins || []).find(c=>c.id===currentCoinId);
+  return Catalog.validateCoin({ id:currentCoinId || 'custom-'+crypto.randomUUID(), name:$('coinName').value,
+    ...Object.fromEntries(['metal','weight','unit','weightMode','purity','karat','premiumType','premium'].map(id=>[id,$(id).value])), notes:$('coinNotes').value, source:old?.source || '' });
+}
+function loadRules() {
+  $('side').value=settings.side; $('autoRefresh').checked=settings.autoRefresh;
+  for (const m of metals) $('rule'+m).value=settings.premiums[m];
+}
 const usd = value => {
   const [whole, fraction = ''] = String(value).split('.');
   return '$' + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fraction.padEnd(2, '0');
@@ -26,6 +54,8 @@ function calculate() {
   result = null; quoteText = '';
   const metal = $('metal').value, manual = $('mode').value === 'manual', gross = $('weightMode').value === 'gross';
   const useKarat = gross && metal === 'Gold' && $('karat').value;
+  const dollarPremium = $('premiumType').value === 'dollars';
+  $('premiumLabel').textContent=dollarPremium ? 'Dollars added per coin ($)' : 'Premium above spot (%)';
   $('manual').disabled = !manual; $('karat').disabled = !gross || metal !== 'Gold'; $('purity').disabled = !gross || !!useKarat;
   $('weightHint').textContent = gross ? 'Use metal-only gross weight. Remove stones and non-metal parts before weighing. Purity is applied once.' : 'For a coin containing 1 fine troy ounce, enter 1 ozt. Purity is already accounted for.';
   $('error').textContent = ''; $('quoteStatus').textContent = '';
@@ -42,11 +72,16 @@ function calculate() {
       $('quoteStatus').textContent = `APMEX ${settings.side.toUpperCase()} · ${priceState.snapshot.sourceTime}`;
     }
     result = Pricing.calculate({ spot, weight: $('weight').value, unit: $('unit').value,
-      purity: gross ? $('purity').value : '100', karat: useKarat || '', premium: $('premium').value, quantity: $('quantity').value });
+      purity: gross ? $('purity').value : '100', karat: useKarat || '', premium: $('premium').value, premiumType:$('premiumType').value, quantity: $('quantity').value });
     $('each').textContent = usd(result.each); $('total').textContent = usd(result.total);
-    $('fine').textContent = `${result.fineOzt} ozt`; $('melt').textContent = usd(result.melt); $('count').textContent = result.quantity;
-    $('formula').textContent = `${usd(spot)} × fine metal weight × (1 + ${$('premium').value}%)`;
-    quoteText = `${metal} selling quote\n${result.quantity} × ${usd(result.each)} = ${usd(result.total)}\nFine content/item: ${result.fineOzt} ozt\nSpot: ${usd(spot)}/ozt (${manual ? 'manual' : 'APMEX ' + settings.side})\nPremium: ${$('premium').value}%\nBefore tax; unit price rounded half up to nearest cent.`;
+    $('fine').textContent = `${result.fineGrams} g / ${result.fineOzt} ozt`; $('melt').textContent = usd(result.melt); $('count').textContent = result.quantity;
+    const factor=useKarat ? `${$('karat').value}/24` : `${gross ? $('purity').value : '100'}/100`;
+    const conversion=$('unit').value==='g' ? ' / 31.1034768' : $('unit').value==='dwt' ? ' / 20' : '';
+    const content=`(${$('weight').value}${conversion} x ${factor})`;
+    const base=`${content} x ${usd(spot)}`;
+    const sale=dollarPremium ? `(${base}) + $${$('premium').value}` : `(${base}) x (1 + ${$('premium').value}/100)`;
+    $('formula').textContent = `${$('coinName').value || metal}\nFine content: ${result.fineGrams} g = approximately ${result.fineOzt} ozt\nMelt: ${base} = approximately $${result.unroundedMelt}\nSell: ${sale}\nRound to cents: approximately $${result.unroundedSell} -> ${usd(result.each)} per coin\nTotal: ${result.quantity} x ${usd(result.each)} = ${usd(result.total)}`;
+    quoteText = $('formula').textContent + `\nSpot source: ${manual ? 'manual' : 'APMEX '+settings.side+' '+priceState.snapshot.sourceTime}\nPremium: ${dollarPremium ? '$'+$('premium').value+' per coin' : $('premium').value+'%'}\nBefore tax. Fine-content figures shown to 8 decimals; calculations use full precision. Quantity multiplies the rounded unit price.`;
     $('copy').disabled = false;
   } catch (e) {
     $('error').textContent = e.message;
@@ -55,8 +90,8 @@ function calculate() {
   }
 }
 $('quote').addEventListener('submit', e => e.preventDefault());
-$('quote').addEventListener('input', calculate);
-$('quote').addEventListener('change', e => { if (e.target.id === 'metal') $('premium').value = settings.premiums[$('metal').value]; calculate(); });
+$('quote').addEventListener('input', e => { if (!['manual','quantity'].includes(e.target.id)) $('catalogMessage').textContent='Unsaved coin edits. Save this coin setup before switching or exporting.'; calculate(); });
+$('quote').addEventListener('change', e => { if (e.target.id === 'metal' && !currentCoinId) $('premium').value = settings.premiums[$('metal').value]; calculate(); });
 document.querySelectorAll('[data-preset]').forEach(button => button.addEventListener('click', () => {
   $('metal').value = button.dataset.preset[0].toUpperCase() + button.dataset.preset.slice(1);
   $('weight').value = '1'; $('unit').value = 'ozt'; $('weightMode').value = 'fine'; $('quantity').value = '1'; $('karat').value = '';
@@ -65,8 +100,8 @@ document.querySelectorAll('[data-preset]').forEach(button => button.addEventList
 $('refresh').addEventListener('click', async () => { try { showPrices(await desktop.refresh()); } catch (e) { $('feed').textContent = e.message; } });
 $('save').addEventListener('click', async () => {
   try {
-    settings = await desktop.saveSettings({ premiums: Object.fromEntries(metals.map(m => [m, $('rule' + m).value])), side: $('side').value, autoRefresh: $('autoRefresh').checked });
-    $('premium').value = settings.premiums[$('metal').value]; $('saved').textContent = 'Pricing rules saved.'; showPrices(priceState);
+    settings = await desktop.saveSettings({ premiums: Object.fromEntries(metals.map(m => [m, $('rule' + m).value])), side: $('side').value, autoRefresh: $('autoRefresh').checked, coins:settings.coins });
+    $('saved').textContent = 'Default rules saved. Existing per-coin premiums are unchanged.'; showPrices(priceState);
   } catch (e) { $('saved').textContent = 'Could not save: ' + e.message; }
 });
 $('copy').addEventListener('click', async () => {
@@ -79,9 +114,54 @@ function showUpdate(state) { $('updateMessage').textContent = state.message; $('
 $('updates').addEventListener('click', async () => showUpdate(await desktop.checkUpdate()));
 $('install').addEventListener('click', () => desktop.installUpdate());
 desktop.onPrices(showPrices); desktop.onUpdate(showUpdate);
+$('coinSearch').addEventListener('input',drawCatalog);
+$('coinList').addEventListener('change',()=>applyCoin(settings.coins.find(c=>c.id===$('coinList').value)));
+$('saveCoin').addEventListener('click',async()=>{
+  try {
+    const coin=coinDraft(), coins=settings.coins.filter(c=>c.id!==coin.id);
+    const index=settings.coins.findIndex(c=>c.id===coin.id);
+    coins.splice(index < 0 ? coins.length : index,0,coin);
+    settings=await desktop.saveSettings({...settings,coins}); currentCoinId=coin.id;
+    drawCatalog(); $('catalogMessage').textContent='Coin setup saved. It will be included in exports.';
+    $('coinInfo').textContent=coin.notes;
+  } catch(e) { $('catalogMessage').textContent='Could not save coin: '+e.message; }
+});
+$('addCoin').addEventListener('click',()=>{
+  currentCoinId=null; $('coinName').value='New coin'; $('coinNotes').value=''; $('weight').value='1'; $('unit').value='ozt';
+  $('weightMode').value='fine'; $('purity').value='100'; $('karat').value=''; $('premiumType').value='percent';
+  $('premium').value=settings.premiums[$('metal').value]; $('coinInfo').textContent='';
+  drawCatalog(); $('coinList').selectedIndex=-1; calculate(); $('catalogMessage').textContent='New coin draft. Enter its specifications and save.'; $('coinName').focus();
+});
+$('duplicateCoin').addEventListener('click',()=>{
+  currentCoinId=null; $('coinName').value+=' (copy)'; drawCatalog(); $('coinList').selectedIndex=-1;
+  $('catalogMessage').textContent='Duplicate draft. Edit it and save as a new coin.'; calculate();
+});
+$('deleteCoin').addEventListener('click',async()=>{
+  if(!currentCoinId) return;
+  const coin=settings.coins.find(c=>c.id===currentCoinId);
+  if(!confirm('Remove '+coin.name+' from the saved catalog?')) return;
+  try {
+    settings=await desktop.saveSettings({...settings,coins:settings.coins.filter(c=>c.id!==currentCoinId)});
+    currentCoinId=null; $('coinSearch').value='';
+    if(settings.coins.length) applyCoin(settings.coins[0]); else { drawCatalog(); $('addCoin').click(); }
+    $('catalogMessage').textContent='Coin removed.';
+  } catch(e) { $('catalogMessage').textContent=e.message; }
+});
+$('exportSetup').addEventListener('click',async()=>{
+  try { const r=await desktop.exportSetup(); if(!r.canceled) $('shareMessage').textContent=`Exported ${r.count} saved coins and shop rules. Copy that JSON file to the other PC and choose Import setup.`; }
+  catch(e){ $('shareMessage').textContent='Export failed: '+e.message; }
+});
+$('importSetup').addEventListener('click',async()=>{
+  try { const r=await desktop.importSetup(); if(r.canceled) return;
+    settings=r.settings; currentCoinId=null; $('coinSearch').value=''; loadRules();
+    if(settings.coins.length) applyCoin(settings.coins[0]); else { drawCatalog(); $('addCoin').click(); }
+    showPrices(priceState); $('shareMessage').textContent=`Imported ${settings.coins.length} saved coins and shop rules. Previous settings were backed up.`;
+  } catch(e){ $('shareMessage').textContent='Import failed; current setup retained: '+e.message; }
+});
 const startup = desktop.initial().then(initial => {
-  settings = initial.settings; $('side').value = settings.side; $('autoRefresh').checked = settings.autoRefresh;
-  for (const m of metals) $('rule' + m).value = settings.premiums[m];
-  $('premium').value = settings.premiums[$('metal').value]; $('version').textContent = 'v' + initial.version;
+  settings=initial.settings; loadRules();
+  $('version').textContent='v'+initial.version;
+  if(settings.coins.length) applyCoin(settings.coins[0]);
+  else { $('coinName').value='Custom coin'; drawCatalog(); }
   showPrices(initial.prices); showUpdate(initial.update);
-}).catch(e => { $('error').textContent = 'App could not initialize: ' + e.message; });
+}).catch(e => { $('error').textContent='App could not initialize: '+e.message; });

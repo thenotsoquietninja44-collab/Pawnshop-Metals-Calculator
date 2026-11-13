@@ -4,10 +4,11 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { autoUpdater } = require('electron-updater');
 const { WIDGET_URL, parseWidget, freshness } = require('./spot');
+const Catalog = require('./catalog');
 let win, settings, snapshot = null, spotError = '', busy = false, updateBusy = false, downloaded = false;
 let updateState = { status: 'idle', message: 'Automatic update checks enabled.' };
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
-const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true });
+const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true, coins:Catalog.defaults() });
 function loadSettings() {
   settings = defaults();
   try {
@@ -18,16 +19,11 @@ function loadSettings() {
       const p = String(saved.premiums?.[metal]);
       if (/^\d{1,4}(\.\d{1,8})?$/.test(p) && Number(p) <= 1000) settings.premiums[metal] = p;
     }
+    settings.coins = saved.coins === undefined ? Catalog.defaults(settings.premiums) : Catalog.validateCoins(saved.coins);
   } catch (e) { if (e.code !== 'ENOENT') spotError = 'Saved settings could not be read; defaults loaded.'; }
 }
 function saveSettings(value) {
-  if (!value || !['bid', 'ask'].includes(value.side) || typeof value.autoRefresh !== 'boolean') throw Error('Invalid settings.');
-  const clean = { side: value.side, autoRefresh: value.autoRefresh, premiums: {} };
-  for (const metal of ['Silver', 'Gold', 'Platinum']) {
-    const p = String(value.premiums?.[metal]);
-    if (!/^\d{1,4}(\.\d{1,8})?$/.test(p) || Number(p) > 1000) throw Error('Premium must be between 0 and 1,000%.');
-    clean.premiums[metal] = p;
-  }
+  const clean = Catalog.validateConfig(value);
   fs.mkdirSync(app.getPath('userData'), { recursive: true });
   fs.writeFileSync(settingsPath() + '.tmp', JSON.stringify(clean, null, 2));
   fs.renameSync(settingsPath() + '.tmp', settingsPath());
@@ -35,6 +31,31 @@ function saveSettings(value) {
   return settings;
 }
 const priceState = () => ({ snapshot, error: spotError, busy, ...freshness(snapshot) });
+async function exportSetup() {
+  const result = await dialog.showSaveDialog(win, { title:'Export saved coin catalog and shop rules', defaultPath:'Pawnshop-Metals-Setup.json', filters:[{name:'Shop setup',extensions:['json']}] });
+  if (result.canceled) return { canceled:true };
+  fs.writeFileSync(result.filePath, JSON.stringify(Catalog.exportSetup(settings),null,2),'utf8');
+  return { canceled:false, count:settings.coins.length };
+}
+async function importSetup() {
+  const selected = await dialog.showOpenDialog(win, { title:'Import coin catalog and shop rules', properties:['openFile'], filters:[{name:'Shop setup',extensions:['json']}] });
+  if (selected.canceled) return { canceled:true };
+  const file = selected.filePaths[0];
+  if (fs.statSync(file).size > 2 * 1024 * 1024) throw Error('Setup file is too large (maximum 2 MB).');
+  const incoming = Catalog.importSetup(JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,'')));
+  const result = await dialog.showMessageBox(win, { type:'question', title:'Review imported setup',
+    message:`Import ${incoming.coins.length} coin setups and their shop rules?`,
+    detail:`${incoming.coins.slice(0,6).map(c=>c.name).join('\n')}${incoming.coins.length > 6 ? '\n...' : ''}\n\nReplace uses exactly this catalog. Merge retains other local coins and updates coins with matching IDs. Both apply imported default premiums, bid/ask selection and auto-refresh preference. Current settings are backed up first. Live and manual prices are not imported.`,
+    buttons:['Replace catalog and rules','Merge catalog and rules','Cancel'], defaultId:2, cancelId:2 });
+  if (result.response === 2) return { canceled:true };
+  if (result.response === 1) {
+    const merged = new Map(settings.coins.map(c=>[c.id,c]));
+    incoming.coins.forEach(c=>merged.set(c.id,c)); incoming.coins = [...merged.values()];
+    Catalog.validateConfig(incoming);
+  }
+  if (fs.existsSync(settingsPath())) fs.copyFileSync(settingsPath(),settingsPath()+'.before-import-'+Date.now()+'.json');
+  return { canceled:false, settings:saveSettings(incoming) };
+}
 const send = (channel, value) => { if (win && !win.isDestroyed()) win.webContents.send(channel, value); };
 async function refresh() {
   if (busy) return priceState();
@@ -79,6 +100,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('initial', () => ({ settings, prices: priceState(), update: updateState, version: app.getVersion() }));
   ipcMain.handle('refresh', () => refresh());
   ipcMain.handle('settings', (_event, value) => saveSettings(value));
+  ipcMain.handle('export-setup', () => exportSetup());
+  ipcMain.handle('import-setup', () => importSetup());
   ipcMain.handle('check-update', () => checkUpdates());
   ipcMain.handle('install-update', async () => {
     if (!downloaded) return;
@@ -113,9 +136,25 @@ app.whenReady().then(async () => {
         if (!document.querySelector('#copy').disabled || document.querySelector('#each').textContent !== '—') throw Error('Stale quote was not blocked');
         set('mode','manual');
         showPrices({fresh:false,error:'Offline test; manual spot remains available.'});
+        applyCoin(settings.coins.find(c=>c.id==='roosevelt-dime'));
+        if(document.querySelector('#each').textContent !== '$4.61') throw Error('Dime percentage quote failed');
+        if(!document.querySelector('#formula').textContent.includes('2.25 g')) throw Error('Fine grams missing from equation');
+        set('premiumType','dollars'); set('premium','1');
+        if(document.querySelector('#each').textContent !== '$4.69') throw Error('Dime dollar premium failed');
+        const draft=coinDraft();
+        const saved=await desktop.saveSettings({...settings,coins:settings.coins.map(c=>c.id===draft.id?draft:c)});
+        if(saved.coins.find(c=>c.id===draft.id).premiumType !== 'dollars') throw Error('Coin save failed');
+        settings=saved;
+        const roundtrip=Catalog.importSetup(JSON.parse(JSON.stringify(Catalog.exportSetup(settings))));
+        if(roundtrip.coins.find(c=>c.id===draft.id).premium!=='1') throw Error('Setup sharing failed');
+        settings.coins.push({...draft,id:'custom-smoke-coin',name:'Custom test coin'});
+        settings=await desktop.saveSettings(settings);
+        applyCoin(settings.coins.find(c=>c.id==='morgan-dollar'));
+        if(document.querySelector('#weight').value!=='26.73') throw Error('Morgan selection failed');
+        applyCoin(settings.coins.find(c=>c.id==='roosevelt-dime'));
         return { price:document.querySelector('#each').textContent, error:document.querySelector('#error').textContent };
       })()`);
-      if (result.price !== '$63.78' || result.error) throw Error(JSON.stringify(result));
+      if (result.price !== '$4.69' || result.error) throw Error(JSON.stringify(result));
       console.log('Windows renderer smoke test passed:', result.price);
       const preview = await win.webContents.capturePage();
       fs.writeFileSync(path.join(process.cwd(), 'app-preview.png'), preview.toPNG());

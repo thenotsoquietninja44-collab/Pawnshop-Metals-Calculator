@@ -11,7 +11,11 @@
   const div = (a, b) => { if (!b[0]) throw Error('Cannot divide by zero.'); return [a[0] * b[1], a[1] * b[0]]; };
   const round = a => (2n * a[0] + a[1]) / (2n * a[1]);
   const formatCents = cents => `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
-  function calculate({ spot, weight, unit, purity, karat, premium, quantity }) {
+  const fixed = (a, places = 8) => {
+    const scale = 10n ** BigInt(places), n = round(mul(a, [scale, 1n]));
+    return `${n / scale}.${String(n % scale).padStart(places, '0')}`.replace(/\.?0+$/, '');
+  };
+  function calculate({ spot, weight, unit, purity, karat, premium, premiumType = 'percent', quantity }) {
     const s = decimal(spot), w = decimal(weight), p = decimal(premium);
     if (!s[0] || !w[0]) throw Error('Spot and weight must be greater than zero.');
     const q = String(quantity);
@@ -26,18 +30,21 @@
       if (!f[0] || f[0] > 100n * f[1]) throw Error('Purity must be greater than 0 and no more than 100%.');
       fine = div(f, [100n, 1n]);
     }
-    if (p[0] > 1000n * p[1]) throw Error('Premium cannot exceed 1,000%.');
+    if (!['percent', 'dollars'].includes(premiumType)) throw Error('Choose a percentage or dollar premium.');
+    if (premiumType === 'percent' && p[0] > 1000n * p[1]) throw Error('Premium cannot exceed 1,000%.');
+    if (premiumType === 'dollars' && p[0] > 1000000n * p[1]) throw Error('Dollar premium cannot exceed $1,000,000 per coin.');
     const units = { ozt: [1n, 1n], g: decimal('31.1034768'), dwt: [20n, 1n] };
     if (!units[unit]) throw Error('Choose troy ounces, grams, or pennyweights.');
     const fineOzt = mul(div(w, units[unit]), fine);
     const melt = mul(s, fineOzt);
-    const sell = mul(melt, [100n * p[1] + p[0], 100n * p[1]]);
+    const sell = premiumType === 'percent' ? mul(melt, [100n * p[1] + p[0], 100n * p[1]]) : [melt[0] * p[1] + p[0] * melt[1], melt[1] * p[1]];
     const eachCents = round(mul(sell, [100n, 1n]));
     const totalCents = eachCents * BigInt(q);
     return {
       each: formatCents(eachCents), total: formatCents(totalCents),
       melt: formatCents(round(mul(melt, [100n, 1n]))),
-      fineOzt: (Number(fineOzt[0]) / Number(fineOzt[1])).toFixed(8),
+      fineOzt: fixed(fineOzt), fineGrams: fixed(mul(fineOzt, units.g)),
+      unroundedMelt: fixed(melt), unroundedSell: fixed(sell),
       quantity: q
     };
   }
