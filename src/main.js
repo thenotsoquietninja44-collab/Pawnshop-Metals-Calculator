@@ -1,0 +1,117 @@
+'use strict';
+const { app, BrowserWindow, ipcMain, shell, net, dialog, Menu } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs');
+const { autoUpdater } = require('electron-updater');
+const { WIDGET_URL, parseWidget, freshness } = require('./spot');
+let win, settings, snapshot = null, spotError = '', busy = false, updateBusy = false, downloaded = false;
+let updateState = { status: 'idle', message: 'Automatic update checks enabled.' };
+const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
+const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true });
+function loadSettings() {
+  settings = defaults();
+  try {
+    const saved = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
+    if (['bid', 'ask'].includes(saved.side)) settings.side = saved.side;
+    if (typeof saved.autoRefresh === 'boolean') settings.autoRefresh = saved.autoRefresh;
+    for (const metal of Object.keys(settings.premiums)) {
+      const p = String(saved.premiums?.[metal]);
+      if (/^\d{1,4}(\.\d{1,8})?$/.test(p) && Number(p) <= 1000) settings.premiums[metal] = p;
+    }
+  } catch (e) { if (e.code !== 'ENOENT') spotError = 'Saved settings could not be read; defaults loaded.'; }
+}
+function saveSettings(value) {
+  if (!value || !['bid', 'ask'].includes(value.side) || typeof value.autoRefresh !== 'boolean') throw Error('Invalid settings.');
+  const clean = { side: value.side, autoRefresh: value.autoRefresh, premiums: {} };
+  for (const metal of ['Silver', 'Gold', 'Platinum']) {
+    const p = String(value.premiums?.[metal]);
+    if (!/^\d{1,4}(\.\d{1,8})?$/.test(p) || Number(p) > 1000) throw Error('Premium must be between 0 and 1,000%.');
+    clean.premiums[metal] = p;
+  }
+  fs.mkdirSync(app.getPath('userData'), { recursive: true });
+  fs.writeFileSync(settingsPath() + '.tmp', JSON.stringify(clean, null, 2));
+  fs.renameSync(settingsPath() + '.tmp', settingsPath());
+  settings = clean;
+  return settings;
+}
+const priceState = () => ({ snapshot, error: spotError, busy, ...freshness(snapshot) });
+const send = (channel, value) => { if (win && !win.isDestroyed()) win.webContents.send(channel, value); };
+async function refresh() {
+  if (busy) return priceState();
+  busy = true;
+  send('prices', priceState());
+  try {
+    const response = await net.fetch(WIDGET_URL, { signal: AbortSignal.timeout(20000), cache: 'no-store' });
+    if (!response.ok) throw Error(`APMEX returned HTTP ${response.status}.`);
+    const html = await response.text();
+    if (html.length > 2000000) throw Error('APMEX response is unexpectedly large.');
+    snapshot = parseWidget(html);
+    spotError = '';
+  } catch (e) { spotError = `Refresh failed: ${e.message}. Last prices retained; manual entry is available.`; }
+  finally { busy = false; send('prices', priceState()); }
+  return priceState();
+}
+function setUpdate(status, message) {
+  updateState = { status, message }; send('update', updateState);
+}
+async function checkUpdates() {
+  if (!app.isPackaged) { setUpdate('idle', 'Updates are available in the installed Windows app.'); return updateState; }
+  if (updateBusy || downloaded) return updateState;
+  updateBusy = true;
+  setUpdate('checking', 'Checking GitHub for updates…');
+  try { await autoUpdater.checkForUpdates(); }
+  catch (e) { setUpdate('error', `Update check failed: ${e.message}`); }
+  finally { updateBusy = false; }
+  return updateState;
+}
+function secureWindow(window) {
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', e => e.preventDefault());
+  window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+}
+app.whenReady().then(async () => {
+  loadSettings();
+  Menu.setApplicationMenu(null);
+  win = new BrowserWindow({ width: 1180, height: 900, minWidth: 900, minHeight: 700,
+    backgroundColor: '#101820', title: 'Pawnshop Metals Calculator',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  secureWindow(win);
+  ipcMain.handle('initial', () => ({ settings, prices: priceState(), update: updateState, version: app.getVersion() }));
+  ipcMain.handle('refresh', () => refresh());
+  ipcMain.handle('settings', (_event, value) => saveSettings(value));
+  ipcMain.handle('check-update', () => checkUpdates());
+  ipcMain.handle('install-update', async () => {
+    if (!downloaded) return;
+    const result = await dialog.showMessageBox(win, { type: 'question', buttons: ['Restart and update', 'Later'], defaultId: 1,
+      title: 'Install update', message: 'Restart to install the downloaded update?', detail: 'Saved pricing rules are preserved. The current unsaved quote will close.' });
+    if (result.response === 0) autoUpdater.quitAndInstall();
+  });
+  ipcMain.handle('open-source', () => shell.openExternal('https://www.apmex.com/widgets/gold-silver-spot-price-tracker'));
+  ipcMain.handle('open-widget', () => shell.openExternal(WIDGET_URL));
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.on('error', e => setUpdate('error', `Updates unavailable: ${e.message}`));
+  autoUpdater.on('update-available', info => setUpdate('downloading', `Downloading version ${info.version}…`));
+  autoUpdater.on('update-not-available', () => setUpdate('current', 'You have the latest version.'));
+  autoUpdater.on('download-progress', p => setUpdate('downloading', `Downloading update: ${Math.round(p.percent)}%`));
+  autoUpdater.on('update-downloaded', info => { downloaded = true; setUpdate('ready', `Version ${info.version} is ready. Restart when convenient.`); });
+  await win.loadFile(path.join(__dirname, 'index.html'));
+  if (process.argv.includes('--smoke-test')) {
+    try {
+      const result = await win.webContents.executeJavaScript(`(() => {
+        document.querySelector('#mode').value='manual'; document.querySelector('#mode').dispatchEvent(new Event('change'));
+        document.querySelector('#manual').value='51.02'; document.querySelector('#manual').dispatchEvent(new Event('input'));
+        return { price:document.querySelector('#each').textContent, error:document.querySelector('#error').textContent };
+      })()`);
+      if (result.price !== '$63.78' || result.error) throw Error(JSON.stringify(result));
+      console.log('Windows renderer smoke test passed:', result.price);
+      app.exit(0);
+    } catch (e) { console.error(e); app.exit(1); }
+    return;
+  }
+  refresh(); checkUpdates();
+  setInterval(() => { if (settings.autoRefresh) refresh(); }, 5 * 60000).unref();
+  setInterval(() => send('prices', priceState()), 30000).unref();
+  setInterval(checkUpdates, 4 * 60 * 60000).unref();
+});
+app.on('window-all-closed', () => app.quit());
