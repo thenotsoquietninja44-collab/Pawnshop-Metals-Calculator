@@ -98,13 +98,27 @@ app.whenReady().then(async () => {
   await win.loadFile(path.join(__dirname, 'index.html'));
   if (process.argv.includes('--smoke-test')) {
     try {
-      const result = await win.webContents.executeJavaScript(`(() => {
-        document.querySelector('#mode').value='manual'; document.querySelector('#mode').dispatchEvent(new Event('change'));
-        document.querySelector('#manual').value='51.02'; document.querySelector('#manual').dispatchEvent(new Event('input'));
+      const result = await win.webContents.executeJavaScript(`(async () => {
+        await startup;
+        const set = (id,value) => { const el=document.getElementById(id); el.value=value; el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('input',{bubbles:true})); };
+        set('mode','manual'); set('manual','51.02');
+        if (document.querySelector('#each').textContent !== '$63.78') throw Error('Manual quote failed');
+        set('quantity','10');
+        if (document.querySelector('#total').textContent !== '$637.80') throw Error('Quantity total failed');
+        set('quantity','1');
+        const snapshot={ prices:{Silver:{bid:'47.60',ask:'51.02'},Gold:{bid:'2300.00',ask:'2400.00'},Platinum:{bid:'1450.00',ask:'1500.00'}}, sourceTime:'TEST FIXTURE', asOf:new Date().toISOString() };
+        showPrices({snapshot,fresh:true,error:''}); set('mode','live');
+        if (document.querySelector('#each').textContent !== '$63.78') throw Error('Live quote failed');
+        showPrices({snapshot,fresh:false,error:''});
+        if (!document.querySelector('#copy').disabled || document.querySelector('#each').textContent !== '—') throw Error('Stale quote was not blocked');
+        set('mode','manual');
+        showPrices({fresh:false,error:'Offline test; manual spot remains available.'});
         return { price:document.querySelector('#each').textContent, error:document.querySelector('#error').textContent };
       })()`);
       if (result.price !== '$63.78' || result.error) throw Error(JSON.stringify(result));
       console.log('Windows renderer smoke test passed:', result.price);
+      const preview = await win.webContents.capturePage();
+      fs.writeFileSync(path.join(process.cwd(), 'app-preview.png'), preview.toPNG());
       app.exit(0);
     } catch (e) { console.error(e); app.exit(1); }
     return;

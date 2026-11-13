@@ -3,7 +3,10 @@ const $ = id => document.getElementById(id);
 const metals = ['Silver', 'Gold', 'Platinum'];
 let settings = { premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true };
 let priceState = {}, result = null, quoteText = '';
-const usd = value => '$' + Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const usd = value => {
+  const [whole, fraction = ''] = String(value).split('.');
+  return '$' + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + fraction.padEnd(2, '0');
+};
 function showPrices(state) {
   priceState = state;
   $('cards').replaceChildren(...metals.map(metal => {
@@ -76,7 +79,7 @@ function showUpdate(state) { $('updateMessage').textContent = state.message; $('
 $('updates').addEventListener('click', async () => showUpdate(await desktop.checkUpdate()));
 $('install').addEventListener('click', () => desktop.installUpdate());
 desktop.onPrices(showPrices); desktop.onUpdate(showUpdate);
-desktop.initial().then(initial => {
+const startup = desktop.initial().then(initial => {
   settings = initial.settings; $('side').value = settings.side; $('autoRefresh').checked = settings.autoRefresh;
   for (const m of metals) $('rule' + m).value = settings.premiums[m];
   $('premium').value = settings.premiums[$('metal').value]; $('version').textContent = 'v' + initial.version;
