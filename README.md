@@ -4,8 +4,18 @@ A Windows desktop app for pricing silver, gold and platinum coins, bullion and j
 
 ## Install
 
-Download `Pawnshop-Metals-Calculator-Setup-0.2.0.exe` from [Releases](https://github.com/thenotsoquietninja44-collab/Pawnshop-Metals-Calculator/releases/latest).
+Download the Windows Setup EXE from [Releases](https://github.com/thenotsoquietninja44-collab/Pawnshop-Metals-Calculator/releases/latest).
 The Windows installer is unsigned. Windows 10/11 x64 is the initial target.
+
+## Compact chosen-coin price list
+
+Open **My compact price list**, choose **Choose coins**, check the coins your shop uses and select **Save chosen list**. The selection is remembered on this computer and travels with exported shop setup files. The list starts empty on upgrades so you can choose your own coins.
+
+Coins group into one row only when their metal, exact fine-metal content, premium type and premium amount match. For example, Roosevelt, Mercury and Barber dimes at 2.5 g and 90% silver share one row at the same premium. Morgan and Peace dollars can also share one row. Different premiums remain separate, even if their rounded prices happen to match. Equivalent unit representations are compared exactly rather than by rounded display values.
+
+Each row shows its coin names, metal-content calculation, short selling equation and price per coin. Click a coin name to edit its individual setup. Save the coin, then return to the compact list to see the new grouping and price. **Copy list** copies the complete list and its source information.
+
+The compact list has its own APMEX/manual price selector. Manual spot values are entered separately for silver, gold and platinum; they are never copied between metals or exported. Stale APMEX prices block automatic quotes and list copying. Choose manual prices to enter verified values when needed.
 
 ## Coin catalog and shop sharing
 
