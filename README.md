@@ -105,3 +105,13 @@ npm run dist -- --publish never
 
 `npm run smoke` launches the actual Electron renderer and verifies the $63.78 example without relying on the live feed.
 The update-install path must be tested between two published versions; a first release alone cannot prove an end-to-end upgrade.
+
+## Metal colors and per-gram prices (0.6.0)
+
+The header Check for updates button uses the same updater and backup gate as the Updates & backups section. Its status appears below the header.
+
+Silver, gold and platinum have matching labels and colors in APMEX cards, chosen rows, coin choices, the saved catalog and quote result. Platinum uses an original reflective CSS texture inspired by the supplied reference; no stock image is bundled. Text labels retain metal identity independently of color.
+
+Expand Per-gram prices for common purities. These are USD melt values per gram of alloy, with no shop premium or tax: spot per fine troy ounce / 31.1034768 x purity fraction. Gold karats use k/24 exactly (14k is not rounded to .585). The table follows saved APMEX bid/ask selection, blocks stale/failed prices, and offers separate manual spots per metal. Manual per-gram spots are independent of quote/list prices and are captured in backup session drafts, not saved shop settings. Pure reference means 100%; fineness presets use their exact labels. Exclude stones and non-metal weight.
+
+Purity interpretation: [FTC jewelry guide](https://consumer.ftc.gov/articles/buying-platinum-gold-and-silver-jewelry). Listed fineness and karat entries are calculation references; verify an item's actual composition before quoting it.

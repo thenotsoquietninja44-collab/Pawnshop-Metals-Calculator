@@ -1,12 +1,11 @@
-Automatic updates with verified backups.
+Metal colors, top update button and per-gram purity prices.
 
-- Checks GitHub on startup and every four hours; downloads updates automatically.
-- Before an in-app update installs, copies the complete installed app, saved coins, premiums, chosen list and settings into a dated backup and verifies every file with SHA-256. Backup failure blocks installation.
-- Records unsaved form values separately for recovery.
-- Adds Updates & backups with Back up now, Open backup folder and Restore shop data. Restoring saved data first backs up your current data. Program files and unsaved drafts remain available in the backup folder for manual recovery.
-- Disables installation on ordinary app exit so updates cannot bypass the backup step.
-- Includes backup failure tests, renderer checks and a full packaged Windows backup check. CI uses a simulated installation callback; a real upgrade between releases is not exercised by CI.
+- Adds a Check for updates button at the top with visible status. Both update buttons use the same updater and verified backup protection.
+- Color codes APMEX cards, coin and bullion rows, selection choices, saved catalog entries and quotes: silver, gold and a reflective platinum texture made with CSS.
+- Adds Per-gram prices for common silver purities (999, 958, 925, 900, 800, 40%, 35%), gold karats (9k, 10k, 14k, 18k, 21k, 22k, 24k) and platinum (850, 900, 950, 999.5), plus pure references.
+- Shows the equation for every purity. USD per gram of alloy, melt value only, no shop premium or tax. Gold uses exact karat/24. Uses your saved APMEX bid/ask side or separately entered manual prices for each metal. Stale or failed APMEX prices are blocked.
+- Preserves your coin catalog, premiums, chosen list, setup sharing and verified update backups.
 
-First upgrade from v0.4.0 or earlier: export your shop setup once before installing this release. The old app cannot run the new backup code. Automatic pre-update backups apply to subsequent in-app updates from v0.5.0 onward. Launching an installer directly does not run the app backup step.
+Use Check for updates at the top of the installed app. Installation starts only after the full current app and shop-data backup is verified. Directly launching an installer does not run that backup step.
 
-Backups are local and not automatically deleted. Keep each whole backup folder together. Verify historical manual spot prices before reusing them.
+47 automated tests, Windows renderer checks and full packaged-application backup validation are run before publishing. Example screenshots use labeled fixture prices, not current market quotes.
