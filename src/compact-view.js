@@ -12,7 +12,8 @@ function drawChoices() {
   const ids=new Set((settings.coins || []).map(c=>c.id));
   chosenDraft=new Set([...chosenDraft].filter(id=>ids.has(id)));
   const query=$('compactSearch').value.toLowerCase();
-  $('coinChoices').replaceChildren(...(settings.coins || []).filter(c=>(c.name+' '+c.notes).toLowerCase().includes(query)).map(coin=>{
+  const kind=$('compactKind').value;
+  $('coinChoices').replaceChildren(...(settings.coins || []).filter(c=>(kind==='all' || Catalog.isGeneric(c)===(kind==='generic')) && (c.name+' '+c.notes).toLowerCase().includes(query)).map(coin=>{
     const label=document.createElement('label'); label.className='coin-choice';
     const check=document.createElement('input'); check.type='checkbox'; check.value=coin.id; check.checked=chosenDraft.has(coin.id);
     const name=document.createElement('span'); name.textContent=coin.name;
@@ -48,7 +49,7 @@ function renderCompact() {
     const names=document.createElement('td'), aliases=document.createElement('div'); aliases.className='compact-aliases';
     for(const coin of group.coins) {
       const button=document.createElement('button'); button.className='compact-name';
-      button.textContent=coin.name.replace(/\s*\([^)]*\)/g,''); button.title=coin.name+' - click to edit';
+      button.textContent=Catalog.isGeneric(coin)?coin.name:coin.name.replace(/\s*\([^)]*\)/g,''); button.title=coin.name+' - click to edit';
       button.addEventListener('click',()=>{ applyCoin(coin); showView('editor'); $('coinName').focus(); }); aliases.append(button);
     }
     names.append(aliases);
@@ -75,7 +76,11 @@ $('showCompact').addEventListener('click',()=>{showView('compact');renderCompact
 $('showEditor').addEventListener('click',()=>showView('editor'));
 $('chooseCoins').addEventListener('click',()=>{$('coinChooser').open=!$('coinChooser').open;});
 $('compactSearch').addEventListener('input',drawChoices);
-$('chooseAll').addEventListener('click',()=>{chosenDraft=new Set(settings.coins.map(c=>c.id));drawChoices();renderCompact();$('compactMessage').textContent='All coins chosen. Save chosen list to keep these choices.';});
+$('compactKind').addEventListener('change',drawChoices);
+$('chooseAll').addEventListener('click',()=>{
+  for(const input of $('coinChoices').querySelectorAll('input[type="checkbox"]')) chosenDraft.add(input.value);
+  drawChoices();renderCompact();$('compactMessage').textContent='Shown coins chosen. Save chosen list to keep these choices.';
+});
 $('chooseNone').addEventListener('click',()=>{chosenDraft=new Set();drawChoices();renderCompact();$('compactMessage').textContent='Choices cleared. Save chosen list to keep this change.';});
 $('saveChoices').addEventListener('click',async()=>{try{await saveChosenList();}catch(e){$('compactMessage').textContent='Could not save choices: '+e.message;}});
 $('compactMode').addEventListener('change',renderCompact);

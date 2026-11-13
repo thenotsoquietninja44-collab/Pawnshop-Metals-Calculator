@@ -4,10 +4,12 @@ const metals = ['Silver', 'Gold', 'Platinum'];
 let settings = { premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true };
 let priceState = {}, result = null, quoteText = '';
 let currentCoinId = null;
+let genericDraft=false;
 let chosenDraft=null, compactText='';
 function drawCatalog() {
   const query = $('coinSearch').value.toLowerCase();
-  $('coinList').replaceChildren(...(settings.coins || []).filter(c=>(c.name+' '+c.notes).toLowerCase().includes(query)).map(c=>{
+  const kind=$('catalogKind').value;
+  $('coinList').replaceChildren(...(settings.coins || []).filter(c=>(kind==='all' || Catalog.isGeneric(c)===(kind==='generic')) && (c.name+' '+c.notes).toLowerCase().includes(query)).map(c=>{
     const option = document.createElement('option'); option.value=c.id;
     option.textContent=c.name+' | +'+c.premium+(c.premiumType === 'percent' ? '%' : ' USD/coin');
     option.selected=c.id === currentCoinId; return option;
@@ -18,6 +20,7 @@ function drawCatalog() {
 function applyCoin(coin) {
   currentCoinId=coin?.id || null;
   if (!coin) return;
+  genericDraft=Catalog.isGeneric(coin);
   for (const id of ['metal','weight','unit','weightMode','purity','karat','premiumType','premium']) $(id).value=coin[id];
   $('coinName').value=coin.name; $('coinNotes').value=coin.notes; $('quantity').value='1';
   $('coinInfo').textContent=coin.notes;
@@ -27,7 +30,7 @@ function applyCoin(coin) {
 function coinDraft() {
   const old=(settings.coins || []).find(c=>c.id===currentCoinId);
   return Catalog.validateCoin({ id:currentCoinId || 'custom-'+crypto.randomUUID(), name:$('coinName').value,
-    ...Object.fromEntries(['metal','weight','unit','weightMode','purity','karat','premiumType','premium'].map(id=>[id,$(id).value])), notes:$('coinNotes').value, source:old?.source || '' });
+    ...Object.fromEntries(['metal','weight','unit','weightMode','purity','karat','premiumType','premium'].map(id=>[id,$(id).value])), ...(genericDraft?{genericGroup:true}:{}), notes:$('coinNotes').value, source:old?.source || '' });
 }
 function loadRules() {
   if(chosenDraft===null) chosenDraft=new Set(settings.compactCoinIds || []);
@@ -119,6 +122,7 @@ $('updates').addEventListener('click', async () => showUpdate(await desktop.chec
 $('install').addEventListener('click', () => desktop.installUpdate());
 desktop.onPrices(showPrices); desktop.onUpdate(showUpdate);
 $('coinSearch').addEventListener('input',drawCatalog);
+$('catalogKind').addEventListener('change',drawCatalog);
 $('coinList').addEventListener('change',()=>applyCoin(settings.coins.find(c=>c.id===$('coinList').value)));
 $('saveCoin').addEventListener('click',async()=>{
   try {
@@ -131,6 +135,7 @@ $('saveCoin').addEventListener('click',async()=>{
   } catch(e) { $('catalogMessage').textContent='Could not save coin: '+e.message; }
 });
 $('addCoin').addEventListener('click',()=>{
+  genericDraft=false;
   currentCoinId=null; $('coinName').value='New coin'; $('coinNotes').value=''; $('weight').value='1'; $('unit').value='ozt';
   $('weightMode').value='fine'; $('purity').value='100'; $('karat').value=''; $('premiumType').value='percent';
   $('premium').value=settings.premiums[$('metal').value]; $('coinInfo').textContent='';
@@ -139,6 +144,13 @@ $('addCoin').addEventListener('click',()=>{
 $('duplicateCoin').addEventListener('click',()=>{
   currentCoinId=null; $('coinName').value+=' (copy)'; drawCatalog(); $('coinList').selectedIndex=-1;
   $('catalogMessage').textContent='Duplicate draft. Edit it and save as a new coin.'; calculate();
+});
+$('addGeneric').addEventListener('click',()=>{
+  $('addCoin').click();genericDraft=true;$('metal').value='Silver';$('weightMode').value='gross';$('unit').value='g';$('weight').value='1';$('purity').value='90';
+  $('coinName').value='Generic silver group (enter country and years)';
+  $('coinNotes').value='Custom group: enter the verified country, date range, gross weight and silver percentage for the coins covered.';
+  $('premium').value=settings.premiums.Silver;calculate();
+  $('catalogMessage').textContent='New generic group. Set its weight, purity, country and years, then save.';
 });
 $('deleteCoin').addEventListener('click',async()=>{
   if(!currentCoinId) return;

@@ -8,7 +8,7 @@ const Catalog = require('./catalog');
 let win, settings, snapshot = null, spotError = '', busy = false, updateBusy = false, downloaded = false;
 let updateState = { status: 'idle', message: 'Automatic update checks enabled.' };
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
-const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true, coins:Catalog.defaults(), compactCoinIds:[] });
+const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true, coins:Catalog.defaults(), compactCoinIds:[], catalogVersion:1 });
 function loadSettings() {
   settings = defaults();
   try {
@@ -21,6 +21,7 @@ function loadSettings() {
     }
     settings.coins = saved.coins === undefined ? Catalog.defaults(settings.premiums) : Catalog.validateCoins(saved.coins);
     settings.compactCoinIds=Catalog.validateConfig({...settings,compactCoinIds:saved.compactCoinIds}).compactCoinIds;
+    Object.assign(settings,Catalog.upgradeGenericPresets(settings.coins,settings.premiums,saved.catalogVersion || 0));
   } catch (e) { if (e.code !== 'ENOENT') spotError = 'Saved settings could not be read; defaults loaded.'; }
 }
 function saveSettings(value) {
@@ -44,6 +45,8 @@ async function importSetup() {
   const file = selected.filePaths[0];
   if (fs.statSync(file).size > 2 * 1024 * 1024) throw Error('Setup file is too large (maximum 2 MB).');
   const incoming = Catalog.importSetup(JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,'')));
+  // Import exactly the reviewed catalog; do not inject presets into an older share file on next startup.
+  incoming.catalogVersion=1;
   const result = await dialog.showMessageBox(win, { type:'question', title:'Review imported setup',
     message:`Import ${incoming.coins.length} coin setups and their shop rules?`,
     detail:`${incoming.coins.slice(0,6).map(c=>c.name).join('\n')}${incoming.coins.length > 6 ? '\n...' : ''}\n\nReplace uses exactly this catalog. Merge retains other local coins and updates coins with matching IDs. Both apply imported default premiums, bid/ask selection and auto-refresh preference. Current settings are backed up first. Live and manual prices are not imported.`,
@@ -183,6 +186,15 @@ app.whenReady().then(async () => {
         document.querySelector('#compactMode').value='manual';renderCompact();
         document.querySelector('#compactMessage').textContent='Example list using a manually entered $51.02 silver spot price.';
         document.querySelector('#coinChooser').open=false;
+        document.querySelector('#compactKind').value='generic';drawChoices();
+        const genericInputs=[...document.querySelectorAll('#coinChoices input')];
+        if(!genericInputs.some(el=>el.value==='generic-us-90-dimes') || genericInputs.some(el=>!Catalog.isGeneric(settings.coins.find(c=>c.id===el.value))))throw Error('Generic chooser filter failed');
+        chosenDraft=new Set(['generic-us-90-dimes','generic-us-90-quarters','generic-us-90-halves','generic-us-90-dollars','generic-us-40-halves']);await saveChosenList();renderCompact();
+        if(document.querySelectorAll('#compactRows tr').length!==5)throw Error('Generic list expected five rows');
+        const genericDime=[...document.querySelectorAll('#compactRows tr')].find(r=>r.dataset.members==='generic-us-90-dimes');
+        if(!genericDime || !genericDime.querySelector('.compact-name').textContent.includes('1892-1964') || !genericDime.textContent.includes('$4.61'))throw Error('Generic dime years or value missing');
+        if(!(await desktop.initial()).settings.compactCoinIds.includes('generic-us-90-dimes'))throw Error('Generic choices not saved');
+        document.querySelector('#compactMessage').textContent='Generic groups with years. Example: manually entered $51.02 silver spot price.';
         document.querySelector('#compactPriceControls').open=false;
         if(document.querySelector('#compactRows tr').getBoundingClientRect().top>=innerHeight)throw Error('Compact coin rows are below the visible window');
         document.querySelector('#compactView').scrollIntoView({block:'start'});
