@@ -1,0 +1,27 @@
+{
+  "name": "pawnshop-metals-calculator",
+  "productName": "Pawnshop Metals Calculator",
+  "version": "0.1.0",
+  "description": "Pawnshop coin and precious metal selling calculator",
+  "author": "thenotsoquietninja44-collab",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.js",
+    "dist": "electron-builder --win nsis --x64",
+    "smoke": "electron . --smoke-test"
+  },
+  "dependencies": { "electron-updater": "6.8.11" },
+  "devDependencies": { "electron": "45.3.1", "electron-builder": "^26.0.12" },
+  "build": {
+    "appId": "com.pawnshop.metalscalculator",
+    "asar": true,
+    "files": ["src/**/*", "package.json"],
+    "directories": { "output": "dist" },
+    "artifactName": "Pawnshop-Metals-Calculator-Setup-${version}.${ext}",
+    "publish": [{ "provider": "github", "owner": "thenotsoquietninja44-collab", "repo": "Pawnshop-Metals-Calculator", "releaseType": "release" }],
+    "win": { "target": "nsis", "signAndEditExecutable": false },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false }
+  }
+}
