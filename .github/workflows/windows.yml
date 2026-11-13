@@ -43,6 +43,7 @@ jobs:
             dist/*.blockmap
             dist/latest.yml
             app-preview.png
+            coins-preview.png
             backup-validation.json
       - name: Publish version if it does not already exist
         shell: pwsh
@@ -54,6 +55,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) { Write-Output "Version already released; build available as workflow artifact."; exit 0 }
           $assets = @(Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe','.blockmap','.yml' } | ForEach-Object FullName)
           $assets += (Join-Path (Get-Location) 'app-preview.png')
+          $assets += (Join-Path (Get-Location) 'coins-preview.png')
           $assets += (Join-Path (Get-Location) 'backup-validation.json')
           gh release create "v$version" @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Pawnshop Metals Calculator $version" --notes-file RELEASE_NOTES.md --latest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
