@@ -102,9 +102,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('initial', () => ({ settings, prices: priceState(), update: updateState, version: app.getVersion() }));
   ipcMain.handle('refresh', () => refresh());
   ipcMain.handle('settings', (_event, value) => saveSettings(value));
-  ipcMain.handle('copy-text', (_event,text) => {
+  ipcMain.handle('copy-text', async (_event,text) => {
     if(typeof text !== 'string' || text.length > 1000000) throw Error('Invalid clipboard text.');
-    clipboard.writeText(text);
+    await clipboard.writeText(text);
   });
   ipcMain.handle('export-setup', () => exportSetup());
   ipcMain.handle('import-setup', () => importSetup());
@@ -187,7 +187,7 @@ app.whenReady().then(async () => {
       })()`);
       console.log('Compact list renderer checks passed:',compactCheck,'grouped rows');
       await win.webContents.executeJavaScript('desktop.copyText(compactText)');
-      if(!clipboard.readText().includes('MY COIN PRICE LIST')) throw Error('List clipboard copy failed');
+      if(!(await clipboard.readText()).includes('MY COIN PRICE LIST')) throw Error('List clipboard copy failed');
       console.log('Windows renderer smoke test passed:', result.price);
       const preview = await win.webContents.capturePage();
       fs.writeFileSync(path.join(process.cwd(), 'app-preview.png'), preview.toPNG());
