@@ -4,8 +4,27 @@ A Windows desktop app for pricing silver, gold and platinum coins, bullion and j
 
 ## Install
 
-Download `Pawnshop-Metals-Calculator-Setup-0.1.0.exe` from [Releases](https://github.com/thenotsoquietninja44-collab/Pawnshop-Metals-Calculator/releases/latest).
+Download `Pawnshop-Metals-Calculator-Setup-0.2.0.exe` from [Releases](https://github.com/thenotsoquietninja44-collab/Pawnshop-Metals-Calculator/releases/latest).
 The Windows installer is unsigned. Windows 10/11 x64 is the initial target.
+
+## Coin catalog and shop sharing
+
+Select a coin, change its numbers, and choose **Save this coin setup**. Each saved coin has its own weight, purity and premium. **Add coin** starts a new record; **Duplicate** makes a separate editable copy. Search finds names and notes. Saved weights can be reduced to account for wear.
+
+The starter catalog includes American Silver Eagles, Morgan and Peace dollars, Walking Liberty/Franklin/Kennedy/Barber halves, Washington/Standing Liberty/Barber quarters, Roosevelt/Mercury/Barber dimes, wartime silver nickels, silver Eisenhower issues, and generic silver/gold/platinum fine-ounce coins.
+
+Historical original-mint weights and compositions are based on [NGC's silver-coin specification table](https://www.ngccoin.com/price-guide/coin-melt-values.aspx?BaseMetal=US-Silver-Coin&MeltCategoryID=2). The Silver Eagle uses [U.S. Mint guaranteed fine content](https://www.usmint.gov/american-eagle-2025-one-ounce-silver-uncirculated-coin-25EG.html): **1 fine troy ounce**, without a second purity deduction. A 1964-and-earlier dime uses 2.5 g gross at 90%, or 2.25 g fine. At a manually entered $51.02 spot, its selling price is **$4.61 at +25%**, or **$4.69 at +$1 per coin**.
+
+**Spot + percentage** multiplies the unrounded melt value by (1 + premium/100). **Spot + dollars per coin** adds that dollar amount to the unrounded melt value of each coin. The displayed equation includes the entered weight, purity, troy conversion, premium, rounding and quantity total. Displayed intermediate figures are rounded to eight decimal places; calculations retain exact rational values.
+
+To share a shop's setup:
+
+1. Save coin edits, then choose **Export setup** and save the JSON file.
+2. Copy the file to the other shop computer by USB, shared folder or another method you use.
+3. In the app on that computer, choose **Import setup** and select the file.
+4. Review the import and choose **Replace** for an identical catalog, or **Merge** to keep additional local coins. Matching IDs use imported settings. A backup is made before applying an import.
+
+Exports include saved coins and default shop rules. They exclude spot snapshots, manual prices and current quote quantities. This is file-based sharing, not continuous synchronization. Both PCs fetch APMEX independently. Existing 0.1.0 rules are retained on upgrade and used to initialize the new catalog.
 
 ## Quote rules
 
