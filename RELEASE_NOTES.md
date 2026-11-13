@@ -9,3 +9,5 @@ Metal colors, top update button and per-gram purity prices.
 Use Check for updates at the top of the installed app. Installation starts only after the full current app and shop-data backup is verified. Directly launching an installer does not run that backup step.
 
 47 automated tests, Windows renderer checks and full packaged-application backup validation are run before publishing. Example screenshots use labeled fixture prices, not current market quotes.
+
+0.6.1 also waits for the screen to finish drawing before capturing release previews.
