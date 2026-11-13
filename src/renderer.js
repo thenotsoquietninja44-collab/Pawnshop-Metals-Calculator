@@ -4,6 +4,7 @@ const metals = ['Silver', 'Gold', 'Platinum'];
 let settings = { premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true };
 let priceState = {}, result = null, quoteText = '';
 let currentCoinId = null;
+let chosenDraft=null, compactText='';
 function drawCatalog() {
   const query = $('coinSearch').value.toLowerCase();
   $('coinList').replaceChildren(...(settings.coins || []).filter(c=>(c.name+' '+c.notes).toLowerCase().includes(query)).map(c=>{
@@ -12,6 +13,7 @@ function drawCatalog() {
     option.selected=c.id === currentCoinId; return option;
   }));
   if (currentCoinId) $('coinList').value=currentCoinId;
+  drawChoices(); renderCompact();
 }
 function applyCoin(coin) {
   currentCoinId=coin?.id || null;
@@ -28,6 +30,7 @@ function coinDraft() {
     ...Object.fromEntries(['metal','weight','unit','weightMode','purity','karat','premiumType','premium'].map(id=>[id,$(id).value])), notes:$('coinNotes').value, source:old?.source || '' });
 }
 function loadRules() {
+  if(chosenDraft===null) chosenDraft=new Set(settings.compactCoinIds || []);
   $('side').value=settings.side; $('autoRefresh').checked=settings.autoRefresh;
   for (const m of metals) $('rule'+m).value=settings.premiums[m];
 }
@@ -49,6 +52,7 @@ function showPrices(state) {
   $('refresh').disabled = !!state.busy;
   $('refresh').textContent = state.busy ? 'Refreshing…' : 'Refresh prices';
   calculate();
+  renderCompact();
 }
 function calculate() {
   result = null; quoteText = '';
@@ -100,12 +104,12 @@ document.querySelectorAll('[data-preset]').forEach(button => button.addEventList
 $('refresh').addEventListener('click', async () => { try { showPrices(await desktop.refresh()); } catch (e) { $('feed').textContent = e.message; } });
 $('save').addEventListener('click', async () => {
   try {
-    settings = await desktop.saveSettings({ premiums: Object.fromEntries(metals.map(m => [m, $('rule' + m).value])), side: $('side').value, autoRefresh: $('autoRefresh').checked, coins:settings.coins });
+    settings = await desktop.saveSettings({ ...settings, premiums: Object.fromEntries(metals.map(m => [m, $('rule' + m).value])), side: $('side').value, autoRefresh: $('autoRefresh').checked });
     $('saved').textContent = 'Default rules saved. Existing per-coin premiums are unchanged.'; showPrices(priceState);
   } catch (e) { $('saved').textContent = 'Could not save: ' + e.message; }
 });
 $('copy').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(quoteText); $('quoteStatus').textContent = 'Quote copied.'; }
+  try { await desktop.copyText(quoteText); $('quoteStatus').textContent = 'Quote copied.'; }
   catch { $('quoteStatus').textContent = 'Clipboard unavailable.'; }
 });
 $('source').addEventListener('click', () => desktop.openSource());
@@ -153,7 +157,7 @@ $('exportSetup').addEventListener('click',async()=>{
 });
 $('importSetup').addEventListener('click',async()=>{
   try { const r=await desktop.importSetup(); if(r.canceled) return;
-    settings=r.settings; currentCoinId=null; $('coinSearch').value=''; loadRules();
+    settings=r.settings; chosenDraft=null; currentCoinId=null; $('coinSearch').value=''; loadRules();
     if(settings.coins.length) applyCoin(settings.coins[0]); else { drawCatalog(); $('addCoin').click(); }
     showPrices(priceState); $('shareMessage').textContent=`Imported ${settings.coins.length} saved coins and shop rules. Previous settings were backed up.`;
   } catch(e){ $('shareMessage').textContent='Import failed; current setup retained: '+e.message; }
@@ -165,3 +169,4 @@ const startup = desktop.initial().then(initial => {
   else { $('coinName').value='Custom coin'; drawCatalog(); }
   showPrices(initial.prices); showUpdate(initial.update);
 }).catch(e => { $('error').textContent='App could not initialize: '+e.message; });
+initializeCompactView();

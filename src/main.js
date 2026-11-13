@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, net, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, net, dialog, Menu, clipboard } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { autoUpdater } = require('electron-updater');
@@ -8,7 +8,7 @@ const Catalog = require('./catalog');
 let win, settings, snapshot = null, spotError = '', busy = false, updateBusy = false, downloaded = false;
 let updateState = { status: 'idle', message: 'Automatic update checks enabled.' };
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
-const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true, coins:Catalog.defaults() });
+const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true, coins:Catalog.defaults(), compactCoinIds:[] });
 function loadSettings() {
   settings = defaults();
   try {
@@ -20,6 +20,7 @@ function loadSettings() {
       if (/^\d{1,4}(\.\d{1,8})?$/.test(p) && Number(p) <= 1000) settings.premiums[metal] = p;
     }
     settings.coins = saved.coins === undefined ? Catalog.defaults(settings.premiums) : Catalog.validateCoins(saved.coins);
+    settings.compactCoinIds=Catalog.validateConfig({...settings,compactCoinIds:saved.compactCoinIds}).compactCoinIds;
   } catch (e) { if (e.code !== 'ENOENT') spotError = 'Saved settings could not be read; defaults loaded.'; }
 }
 function saveSettings(value) {
@@ -51,6 +52,7 @@ async function importSetup() {
   if (result.response === 1) {
     const merged = new Map(settings.coins.map(c=>[c.id,c]));
     incoming.coins.forEach(c=>merged.set(c.id,c)); incoming.coins = [...merged.values()];
+    incoming.compactCoinIds=[...new Set([...settings.compactCoinIds,...incoming.compactCoinIds])];
     Catalog.validateConfig(incoming);
   }
   if (fs.existsSync(settingsPath())) fs.copyFileSync(settingsPath(),settingsPath()+'.before-import-'+Date.now()+'.json');
@@ -100,6 +102,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('initial', () => ({ settings, prices: priceState(), update: updateState, version: app.getVersion() }));
   ipcMain.handle('refresh', () => refresh());
   ipcMain.handle('settings', (_event, value) => saveSettings(value));
+  ipcMain.handle('copy-text', (_event,text) => {
+    if(typeof text !== 'string' || text.length > 1000000) throw Error('Invalid clipboard text.');
+    clipboard.writeText(text);
+  });
   ipcMain.handle('export-setup', () => exportSetup());
   ipcMain.handle('import-setup', () => importSetup());
   ipcMain.handle('check-update', () => checkUpdates());
@@ -155,6 +161,33 @@ app.whenReady().then(async () => {
         return { price:document.querySelector('#each').textContent, error:document.querySelector('#error').textContent };
       })()`);
       if (result.price !== '$4.69' || result.error) throw Error(JSON.stringify(result));
+      const compactCheck=await win.webContents.executeJavaScript(`(async()=>{
+        const ids=['silver-eagle','roosevelt-dime','mercury-dime','barber-dime','washington-quarter','standing-quarter','barber-quarter','walking-half','franklin-half','kennedy-1964','morgan-dollar','peace-dollar'];
+        settings.coins=settings.coins.map(c=>ids.includes(c.id)?{...c,premium:'25',premiumType:'percent'}:c);
+        settings=await desktop.saveSettings(settings);
+        chosenDraft=new Set(ids);await saveChosenList();
+        const reloaded=await desktop.initial();
+        if(reloaded.settings.compactCoinIds.length!==12)throw Error('Chosen coins did not persist');
+        if(Catalog.importSetup(Catalog.exportSetup(reloaded.settings)).compactCoinIds.length!==12)throw Error('Chosen list did not share');
+        document.querySelector('#compactMode').value='manual';document.querySelector('#compactSilver').value='51.02';
+        showView('compact');drawChoices();renderCompact();
+        const rows=[...document.querySelectorAll('#compactRows tr')];
+        if(rows.length!==5)throw Error('Expected five grouped rows, got '+rows.length);
+        const dimes=rows.find(r=>r.dataset.members.includes('roosevelt-dime'));
+        if(!dimes || dimes.querySelectorAll('.compact-name').length!==3 || !dimes.textContent.includes('$4.61'))throw Error('Dime group failed');
+        const equation=dimes.querySelector('.compact-equation').textContent;
+        if(!equation.includes('2.5') || !equation.includes('90/100') || !equation.includes('31.1034768'))throw Error('Compact equation missing numbers');
+        if(document.querySelector('#copyList').disabled)throw Error('Valid list cannot be copied');
+        document.querySelector('#compactMode').value='live';renderCompact();
+        if(!document.querySelector('#copyList').disabled || [...document.querySelectorAll('#compactRows tr')].some(r=>r.lastElementChild.textContent!=='-'))throw Error('Stale compact prices not blocked');
+        document.querySelector('#compactMode').value='manual';renderCompact();
+        document.querySelector('#compactMessage').textContent='Example list using a manually entered $51.02 silver spot price.';
+        document.querySelector('#coinChooser').open=false;
+        return rows.length;
+      })()`);
+      console.log('Compact list renderer checks passed:',compactCheck,'grouped rows');
+      await win.webContents.executeJavaScript('desktop.copyText(compactText)');
+      if(!clipboard.readText().includes('MY COIN PRICE LIST')) throw Error('List clipboard copy failed');
       console.log('Windows renderer smoke test passed:', result.price);
       const preview = await win.webContents.capturePage();
       fs.writeFileSync(path.join(process.cwd(), 'app-preview.png'), preview.toPNG());

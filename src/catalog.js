@@ -56,7 +56,11 @@
       if (typeof p !== 'string' || !/^\d{1,4}(\.\d{1,8})?$/.test(p) || +p > 1000) throw Error('Invalid default metal premium.');
       premiums[metal] = p;
     }
-    return { premiums, side:value.side, autoRefresh:value.autoRefresh, coins:validateCoins(value.coins) };
+    const coins=validateCoins(value.coins), ids=new Set(coins.map(c=>c.id));
+    const selected=value.compactCoinIds === undefined ? [] : value.compactCoinIds;
+    if (!Array.isArray(selected) || selected.length > 500 || selected.some(id=>typeof id !== 'string')) throw Error('Invalid compact list selection.');
+    const compactCoinIds=[...new Set(selected)].filter(id=>ids.has(id));
+    return { premiums, side:value.side, autoRefresh:value.autoRefresh, coins, compactCoinIds };
   }
   function exportSetup(config) {
     return { format:'pawnshop-metals-setup', version:1, exportedAt:new Date().toISOString(), config:validateConfig(config) };

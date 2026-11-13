@@ -11,6 +11,10 @@
   const div = (a, b) => { if (!b[0]) throw Error('Cannot divide by zero.'); return [a[0] * b[1], a[1] * b[0]]; };
   const round = a => (2n * a[0] + a[1]) / (2n * a[1]);
   const formatCents = cents => `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
+  const normalized = a => {
+    let x=a[0], y=a[1]; while(y) { const remainder=x%y; x=y; y=remainder; }
+    return `${a[0]/x}/${a[1]/x}`;
+  };
   const fixed = (a, places = 8) => {
     const scale = 10n ** BigInt(places), n = round(mul(a, [scale, 1n]));
     return `${n / scale}.${String(n % scale).padStart(places, '0')}`.replace(/\.?0+$/, '');
@@ -45,7 +49,7 @@
       melt: formatCents(round(mul(melt, [100n, 1n]))),
       fineOzt: fixed(fineOzt), fineGrams: fixed(mul(fineOzt, units.g)),
       unroundedMelt: fixed(melt), unroundedSell: fixed(sell),
-      quantity: q
+      quantity: q, contentKey:normalized(fineOzt), premiumKey:normalized(p)
     };
   }
   const api = { calculate, decimal };

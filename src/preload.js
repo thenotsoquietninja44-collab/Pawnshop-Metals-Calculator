@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktop', {
   initial: () => ipcRenderer.invoke('initial'), refresh: () => ipcRenderer.invoke('refresh'),
   saveSettings: value => ipcRenderer.invoke('settings', value),
+  copyText: text => ipcRenderer.invoke('copy-text',text),
   exportSetup: () => ipcRenderer.invoke('export-setup'), importSetup: () => ipcRenderer.invoke('import-setup'),
   checkUpdate: () => ipcRenderer.invoke('check-update'), installUpdate: () => ipcRenderer.invoke('install-update'),
   openSource: () => ipcRenderer.invoke('open-source'), openWidget: () => ipcRenderer.invoke('open-widget'),
