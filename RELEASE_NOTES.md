@@ -1,18 +1,13 @@
-Compact chosen-coin price list.
+Generic coin groups with visible years.
 
-Version 0.3.1 keeps the market panel and spot-entry controls collapsed in the compact view so the coin rows are visible immediately. Refresh remains available beside the list.
+- Add seven dated generic U.S. groups: 90% silver dimes, quarters, half dollars and Morgan/Peace dollars; 40% Kennedy halves and Eisenhower silver dollars; 35% wartime nickels.
+- Filter the coin editor and compact chooser to Generic groups (with years).
+- Keep generic names and year ranges visible in compact rows and copied lists.
+- Add generic group creates a custom editable family with your own country/years, weight, silver percentage and premium.
+- Preserve existing saved coins, premiums and selections while adding the new presets once. Deleted generic groups stay deleted.
+- Keep compact calculations, setup sharing, APMEX pricing and automatic updates.
 
-- Choose the coins your shop uses and save a compact price list.
-- Group coins with the same metal content and pricing rule: matching 2.5 g, 90% silver dimes share one row; matching Morgan and Peace dollars can share another.
-- Show coin names, fine-metal content, a short equation and the selling price per coin.
-- Keep different premiums separate, even when their rounded prices match.
-- Click a coin name to edit its setup, then return to the list.
-- Copy the list with source information. Choose APMEX or independent manual prices for each metal.
-- Remember your chosen coins and include selections in exported shop setups.
-- Keep the full coin editor, APMEX widget feed and automatic updater.
+Use Check for updates in the installed app, or download the Setup EXE below. The installer is unsigned.
 
-Existing users can choose Check for updates in the app. New users can download the Setup EXE below. The installer is unsigned.
-Settings are stored in the Windows user profile and preserved by subsequent updates.
-
-Open My compact price list -> Choose coins -> check your coins -> Save chosen list.
-Each price is per coin, before tax. Grouping uses exact metal content and premium rules, not rounded price equality.
+In My compact price list, choose Choose coins -> Show: Generic groups (with years) -> check your groups -> Save chosen list.
+Preset names contain date and issue restrictions. Custom alloys such as 60% require your own verified specifications and years.

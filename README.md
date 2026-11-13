@@ -7,6 +7,26 @@ A Windows desktop app for pricing silver, gold and platinum coins, bullion and j
 Download the Windows Setup EXE from [Releases](https://github.com/thenotsoquietninja44-collab/Pawnshop-Metals-Calculator/releases/latest).
 The Windows installer is unsigned. Windows 10/11 x64 is the initial target.
 
+## Generic coin groups with years
+
+Choose **Generic groups (with years)** in either the coin editor's Catalog view or the compact list's chooser. Select a generic family instead of selecting every individual design. Generic names retain their years in the compact table and copied list.
+
+| Generic family | Covered years / restrictions | Gross weight | Silver |
+| --- | --- | --- | --- |
+| U.S. silver dimes | 1892-1964: Barber, Mercury, Roosevelt | 2.5 g | 90% |
+| U.S. silver quarters | 1892-1964: Barber, Standing Liberty, Washington | 6.25 g | 90% |
+| U.S. silver half dollars | 1892-1964: Barber, Walking Liberty, Franklin, Kennedy | 12.5 g | 90% |
+| Morgan / Peace silver dollars | 1878-1904, 1921-1928, 1934-1935 | 26.73 g | 90% |
+| Kennedy silver half dollars | 1965-1970 | 11.5 g | 40% |
+| Eisenhower silver dollars | 1971-1974 and 1976, silver collector issues only | 24.59 g | 40% |
+| Wartime silver nickels | 1942-1945, large P/D/S above Monticello | 5 g | 35% |
+
+These are standard-weight groups, not a claim that every coin dated in a range has that alloy. In particular, not all 1942 nickels or Eisenhower dollars are silver. Earlier dime/quarter/half-dollar types and later collector issues can have different specifications and are outside the listed standard-weight presets. The dates do not imply continuous production in every year.
+
+Preset sources: [NGC U.S. silver specifications](https://www.ngccoin.com/price-guide/coin-melt-values.aspx?BaseMetal=US-Silver-Coin&MeltCategoryID=2). The app does not invent a dated U.S. 60%-silver dime series. **Add generic group** lets a shop create any verified alloy group, including 60%, by entering its country/years in the name and setting its actual weight and purity.
+
+Existing installations receive the seven new U.S. groups once, without replacing saved coins, premiums or compact-list selections. Deleting a generic group after this migration is respected on later restarts. Imported setups retain exactly their reviewed catalog; Add generic group remains available for custom entries.
+
 ## Compact chosen-coin price list
 
 Open **My compact price list**, choose **Choose coins**, check the coins your shop uses and select **Save chosen list**. The selection is remembered on this computer and travels with exported shop setup files. The list starts empty on upgrades so you can choose your own coins.
