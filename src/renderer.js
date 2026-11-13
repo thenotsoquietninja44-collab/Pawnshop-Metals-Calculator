@@ -117,10 +117,36 @@ $('copy').addEventListener('click', async () => {
 });
 $('source').addEventListener('click', () => desktop.openSource());
 $('widget').addEventListener('click', () => desktop.openWidget());
-function showUpdate(state) { $('updateMessage').textContent = state.message; $('install').hidden = state.status !== 'ready'; $('updates').disabled = ['checking', 'downloading'].includes(state.status); }
+function showUpdate(state) {
+  $('updateMessage').textContent = state.message; $('install').hidden = state.status !== 'ready'; $('updates').disabled = ['checking', 'downloading','installing'].includes(state.status);
+  if(['ready','error','installing'].includes(state.status))$('updateCenter').open=true;
+}
 $('updates').addEventListener('click', async () => showUpdate(await desktop.checkUpdate()));
-$('install').addEventListener('click', () => desktop.installUpdate());
+$('install').addEventListener('click', async () => {try{await desktop.installUpdate(collectBackupSession());}catch(e){$('backupMessage').textContent='Update could not start: '+e.message;}});
+function collectBackupSession(){
+  const quote=Object.fromEntries(['metal','weight','unit','weightMode','purity','karat','premiumType','premium','quantity','manual','mode','coinName','coinNotes'].map(id=>[id,$(id).value]));
+  return {capturedAt:new Date().toISOString(),quote,currentCoinId,genericDraft,pendingChosenCoinIds:[...(chosenDraft || [])],
+    compactMode:$('compactMode').value,manualCompactSpots:Object.fromEntries(metals.map(m=>[m,$('compact'+m).value])),
+    note:'Unsaved form snapshot for recovery. Verify historical manual spot prices before using them.'};
+}
+function showBackup(state){
+  $('backupMessage').textContent=state.message;
+  $('backupOverlay').hidden=!state.busy;$('backupOverlayMessage').textContent=state.message;
+  document.querySelector('main').inert=!!state.busy;document.querySelector('header').inert=!!state.busy;
+  if(state.busy || state.lastPath)$('updateCenter').open=true;
+}
+$('headerUpdates').addEventListener('click',()=>{$('updateCenter').open=true;$('updateCenter').scrollIntoView({behavior:'smooth',block:'start'});});
+$('backupNow').addEventListener('click',async()=>{try{await desktop.backupNow(collectBackupSession());}catch(e){$('backupMessage').textContent='Backup failed: '+e.message;}});
+$('openBackups').addEventListener('click',async()=>{try{await desktop.openBackups();}catch(e){$('backupMessage').textContent='Could not open backups: '+e.message;}});
+$('restoreBackup').addEventListener('click',async()=>{
+  try{const restored=await desktop.restoreBackup();if(restored.canceled)return;
+    settings=restored.settings;chosenDraft=null;currentCoinId=null;$('coinSearch').value='';loadRules();
+    if(settings.coins.length)applyCoin(settings.coins[0]);else{drawCatalog();$('addCoin').click();}
+    showPrices(priceState);$('backupMessage').textContent='Saved shop data restored. Previous settings were backed up first.';
+  }catch(e){$('backupMessage').textContent='Could not restore shop data: '+e.message;}
+});
 desktop.onPrices(showPrices); desktop.onUpdate(showUpdate);
+desktop.onBackup(showBackup);
 $('coinSearch').addEventListener('input',drawCatalog);
 $('catalogKind').addEventListener('change',drawCatalog);
 $('coinList').addEventListener('change',()=>applyCoin(settings.coins.find(c=>c.id===$('coinList').value)));
@@ -180,5 +206,6 @@ const startup = desktop.initial().then(initial => {
   if(settings.coins.length) applyCoin(settings.coins[0]);
   else { $('coinName').value='Custom coin'; drawCatalog(); }
   showPrices(initial.prices); showUpdate(initial.update);
+  showBackup(initial.backup);
 }).catch(e => { $('error').textContent='App could not initialize: '+e.message; });
 initializeCompactView();

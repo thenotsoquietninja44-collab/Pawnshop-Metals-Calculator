@@ -5,7 +5,17 @@ const fs = require('node:fs');
 const { autoUpdater } = require('electron-updater');
 const { WIDGET_URL, parseWidget, freshness } = require('./spot');
 const Catalog = require('./catalog');
+const Backup = require('./backup');
+const os=require('node:os');
+const smokeMode=process.argv.includes('--smoke-test') || process.argv.includes('--backup-smoke-test');
+if(smokeMode)app.setPath('userData',fs.mkdtempSync(path.join(os.tmpdir(),'pawnshop-smoke-')));
+autoUpdater.autoInstallOnAppQuit=false;
+const primaryInstance=app.requestSingleInstanceLock();
+if(!primaryInstance)app.quit();
+app.on('second-instance',()=>{if(win && !win.isDestroyed()){if(win.isMinimized())win.restore();win.focus();}});
 let win, settings, snapshot = null, spotError = '', busy = false, updateBusy = false, downloaded = false;
+let downloadedVersion='',operationBusy=false,allowQuit=false;
+let backupState={busy:false,message:'A verified full app and shop-data backup is required before each in-app update.',lastPath:null};
 let updateState = { status: 'idle', message: 'Automatic update checks enabled.' };
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 const defaults = () => ({ premiums: { Silver: '25', Gold: '0', Platinum: '0' }, side: 'ask', autoRefresh: true, coins:Catalog.defaults(), compactCoinIds:[], catalogVersion:1 });
@@ -25,6 +35,7 @@ function loadSettings() {
   } catch (e) { if (e.code !== 'ENOENT') spotError = 'Saved settings could not be read; defaults loaded.'; }
 }
 function saveSettings(value) {
+  if(operationBusy)throw Error('Wait for the backup or restore operation to finish.');
   const clean = Catalog.validateConfig(value);
   fs.mkdirSync(app.getPath('userData'), { recursive: true });
   fs.writeFileSync(settingsPath() + '.tmp', JSON.stringify(clean, null, 2));
@@ -62,6 +73,55 @@ async function importSetup() {
   return { canceled:false, settings:saveSettings(incoming) };
 }
 const send = (channel, value) => { if (win && !win.isDestroyed()) win.webContents.send(channel, value); };
+function setBackup(patch){backupState={...backupState,...patch};send('backup',backupState);}
+function installedAppDir(){
+  if(!app.isPackaged)throw Error('Full application backups require the installed Windows app.');
+  const directory=path.dirname(app.getPath('exe'));
+  if(path.relative(path.join(directory,'resources','app.asar'),path.resolve(app.getAppPath()))!=='')throw Error('Installed application location is unrecognized.');
+  return directory;
+}
+async function makeBackup(session={},reason='manual',includeApplication=true) {
+  const backup=await Backup.createBackup({userDataDir:app.getPath('userData'),appDir:includeApplication?installedAppDir():null,executableName:path.basename(app.getPath('exe')),
+    version:app.getVersion(),targetVersion:reason==='before-update'?downloadedVersion:'',settings,session,reason,
+    onProgress:p=>setBackup({busy:true,message:`${p.phase==='copying'?'Backing up':'Verifying backup'}: ${p.done}/${p.total} files. Please keep the app open.`})});
+  setBackup({lastPath:backup.directory,message:'Verified backup saved: '+backup.directory});
+  return backup;
+}
+async function manualBackup(session){
+  if(operationBusy)throw Error('A backup or update is already running.');
+  operationBusy=true;setBackup({busy:true,message:'Creating a full application and shop-data backup...'});
+  try{return {directory:(await makeBackup(session)).directory};}
+  catch(e){setBackup({message:'Backup failed: '+e.message});throw e;}
+  finally{operationBusy=false;setBackup({busy:false});}
+}
+async function protectedUpdate(session){
+  if(!downloaded || operationBusy)return;
+  operationBusy=true;
+  try{
+    const decision=await dialog.showMessageBox(win,{type:'question',buttons:['Back up and install','Later'],defaultId:1,cancelId:1,title:'Install update safely',message:`Install version ${downloadedVersion}?`,detail:'First, the complete current application, saved shop data and current unsaved form values will be copied and verified. If backup verification fails, installation is blocked. The app restarts after a successful backup.'});
+    if(decision.response!==0)return;
+    setBackup({busy:true,message:'Backing up before installation...'});
+    await Backup.installAfterBackup({create:()=>makeBackup(session,'before-update',true),
+      install:()=>{allowQuit=true;setUpdate('installing','Verified backup complete. Restarting to install the update...');autoUpdater.quitAndInstall();}});
+  }catch(e){allowQuit=false;setBackup({message:'Update paused; backup or installation failed: '+e.message});setUpdate('ready','Update paused. Resolve the backup error and try again.');await dialog.showMessageBox(win,{type:'error',title:'Update was not installed',message:'The update could not proceed safely.',detail:e.message+'\nYour current app remains installed. You can retry after resolving the problem.'});}
+  finally{if(!allowQuit){operationBusy=false;setBackup({busy:false});}}
+}
+async function restoreBackup(){
+  if(operationBusy)throw Error('Wait for the current backup or update to finish.');
+  const selected=await dialog.showOpenDialog(win,{title:'Restore saved shop data from backup',defaultPath:Backup.backupRoot(app.getPath('userData')),properties:['openFile'],filters:[{name:'Backup manifest (backup.json)',extensions:['json']}]});
+  if(selected.canceled)return {canceled:true};
+  operationBusy=true;setBackup({busy:true,message:'Verifying the selected backup...'});
+  try{
+    const checked=await Backup.verifyBackup(path.dirname(selected.filePaths[0]));
+    const decision=await dialog.showMessageBox(win,{type:'question',buttons:['Restore saved shop data','Cancel'],defaultId:1,cancelId:1,title:'Restore shop data',message:`Restore the saved shop data from version ${checked.manifest.appVersion}?`,detail:`Backup created: ${checked.manifest.createdAt}\nThis restores coins, premiums, chosen-list selections and saved settings. Current shop data will be backed up first. The application executable and unsaved quote drafts are not restored by this action.`});
+    if(decision.response!==0)return {canceled:true};
+    await makeBackup({},'before-restore',false);
+    operationBusy=false;settings=saveSettings({...checked.settings,catalogVersion:1});operationBusy=true;
+    setBackup({message:'Saved shop data restored. Current data was backed up first.'});
+    return {canceled:false,settings};
+  }catch(e){setBackup({message:'Restore failed; current settings retained: '+e.message});throw e;}
+  finally{operationBusy=false;setBackup({busy:false});}
+}
 async function refresh() {
   if (busy) return priceState();
   busy = true;
@@ -82,7 +142,7 @@ function setUpdate(status, message) {
 }
 async function checkUpdates() {
   if (!app.isPackaged) { setUpdate('idle', 'Updates are available in the installed Windows app.'); return updateState; }
-  if (updateBusy || downloaded) return updateState;
+  if (updateBusy || downloaded || operationBusy) return updateState;
   updateBusy = true;
   setUpdate('checking', 'Checking GitHub for updates…');
   try { await autoUpdater.checkForUpdates(); }
@@ -96,13 +156,15 @@ function secureWindow(window) {
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 }
 app.whenReady().then(async () => {
+  if(!primaryInstance)return;
   loadSettings();
   Menu.setApplicationMenu(null);
   win = new BrowserWindow({ width: 1180, height: 900, minWidth: 900, minHeight: 700,
-    backgroundColor: '#101820', title: 'Pawnshop Metals Calculator',
+    backgroundColor: '#101820', title: 'Pawnshop Metals Calculator', show:!process.argv.includes('--backup-smoke-test'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
   secureWindow(win);
-  ipcMain.handle('initial', () => ({ settings, prices: priceState(), update: updateState, version: app.getVersion() }));
+  win.on('close',e=>{if(operationBusy && !allowQuit)e.preventDefault();});
+  ipcMain.handle('initial', () => ({ settings, prices: priceState(), update: updateState, backup:backupState, version: app.getVersion() }));
   ipcMain.handle('refresh', () => refresh());
   ipcMain.handle('settings', (_event, value) => saveSettings(value));
   ipcMain.handle('copy-text', async (_event,text) => {
@@ -112,22 +174,40 @@ app.whenReady().then(async () => {
   ipcMain.handle('export-setup', () => exportSetup());
   ipcMain.handle('import-setup', () => importSetup());
   ipcMain.handle('check-update', () => checkUpdates());
-  ipcMain.handle('install-update', async () => {
-    if (!downloaded) return;
-    const result = await dialog.showMessageBox(win, { type: 'question', buttons: ['Restart and update', 'Later'], defaultId: 1,
-      title: 'Install update', message: 'Restart to install the downloaded update?', detail: 'Saved pricing rules are preserved. The current unsaved quote will close.' });
-    if (result.response === 0) autoUpdater.quitAndInstall();
-  });
+  ipcMain.handle('install-update', (_event,session) => protectedUpdate(session));
+  ipcMain.handle('backup-now',(_event,session)=>manualBackup(session));
+  ipcMain.handle('restore-backup',()=>restoreBackup());
+  ipcMain.handle('open-backups',async()=>{const folder=Backup.backupRoot(app.getPath('userData'));await fs.promises.mkdir(folder,{recursive:true});const error=await shell.openPath(folder);if(error)throw Error(error);});
   ipcMain.handle('open-source', () => shell.openExternal('https://www.apmex.com/widgets/gold-silver-spot-price-tracker'));
   ipcMain.handle('open-widget', () => shell.openExternal(WIDGET_URL));
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.on('error', e => setUpdate('error', `Updates unavailable: ${e.message}`));
+  autoUpdater.on('error', e => {
+    if(allowQuit){allowQuit=false;operationBusy=false;setBackup({busy:false,message:'The backup is safe, but update installation failed: '+e.message});}
+    setUpdate(downloaded?'ready':'error', `Updates unavailable: ${e.message}`);
+  });
   autoUpdater.on('update-available', info => setUpdate('downloading', `Downloading version ${info.version}…`));
   autoUpdater.on('update-not-available', () => setUpdate('current', 'You have the latest version.'));
   autoUpdater.on('download-progress', p => setUpdate('downloading', `Downloading update: ${Math.round(p.percent)}%`));
-  autoUpdater.on('update-downloaded', info => { downloaded = true; setUpdate('ready', `Version ${info.version} is ready. Restart when convenient.`); });
+  autoUpdater.on('update-downloaded', info => { downloaded = true; downloadedVersion=info.version; setUpdate('ready', `Version ${info.version} is ready. Back up and install when convenient.`); });
   await win.loadFile(path.join(__dirname, 'index.html'));
+  if(process.argv.includes('--backup-smoke-test')){
+    try{
+      if(!app.isPackaged)throw Error('This check must run from the packaged Windows app.');
+      settings.premiums.Silver='31';settings.compactCoinIds=['generic-us-90-dimes'];saveSettings(settings);
+      const session=await win.webContents.executeJavaScript('(async()=>{await startup;return collectBackupSession();})()');
+      let installed=false;downloadedVersion='next-version-test';
+      const full=await Backup.installAfterBackup({create:()=>makeBackup(session,'before-update',true),install:checked=>{
+        if(checked.settings.premiums.Silver!=='31' || !checked.settings.compactCoinIds.includes('generic-us-90-dimes'))throw Error('Shop data did not survive the full backup.');
+        installed=true;
+      }});
+      if(!installed || !full.manifest.files.some(f=>f.path==='application/resources/app.asar'))throw Error('Full backup gate failed.');
+      const data=Backup.backupRoot(app.getPath('userData'));
+      console.log('Packaged Windows full-app backup verified:',full.manifest.files.length,'files. Root:',data);
+      await fs.promises.writeFile(path.join(process.cwd(),'backup-validation.json'),JSON.stringify({passed:true,version:app.getVersion(),files:full.manifest.files.length,application:full.manifest.includesApplication,coins:full.settings.coins.length,installHookReachedAfterVerification:installed},null,2));
+      app.exit(0);
+    }catch(e){console.error(e);app.exit(1);}return;
+  }
   if (process.argv.includes('--smoke-test')) {
     try {
       const result = await win.webContents.executeJavaScript(`(async () => {
@@ -204,6 +284,14 @@ app.whenReady().then(async () => {
       await win.webContents.executeJavaScript('desktop.copyText(compactText)');
       if(!(await clipboard.readText()).includes('MY COIN PRICE LIST')) throw Error('List clipboard copy failed');
       console.log('Windows renderer smoke test passed:', result.price);
+      await win.webContents.executeJavaScript(`(()=>{
+        if(!document.querySelector('#backupNow') || !document.querySelector('#restoreBackup') || !document.querySelector('#openBackups'))throw Error('Backup controls missing');
+        showBackup({busy:true,message:'TEST backup in progress'});
+        if(!document.querySelector('main').inert || document.querySelector('#backupOverlay').hidden)throw Error('Backup did not protect editing');
+        showBackup({busy:false,message:'Before installing an update, the full current app and shop data are backed up and verified.'});
+        if(document.querySelector('main').inert)throw Error('Backup lock was not released');
+        document.querySelector('#updateCenter').open=true;document.querySelector('#updateCenter').scrollIntoView({block:'start'});
+      })()`);
       const preview = await win.webContents.capturePage();
       fs.writeFileSync(path.join(process.cwd(), 'app-preview.png'), preview.toPNG());
       app.exit(0);
