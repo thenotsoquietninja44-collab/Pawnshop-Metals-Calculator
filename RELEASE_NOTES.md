@@ -1,5 +1,7 @@
 Compact chosen-coin price list.
 
+Version 0.3.1 keeps the market panel and spot-entry controls collapsed in the compact view so the coin rows are visible immediately. Refresh remains available beside the list.
+
 - Choose the coins your shop uses and save a compact price list.
 - Group coins with the same metal content and pricing rule: matching 2.5 g, 90% silver dimes share one row; matching Morgan and Peace dollars can share another.
 - Show coin names, fine-metal content, a short equation and the selling price per coin.
