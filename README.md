@@ -80,9 +80,15 @@ The source widget and its Terms of Use remain accessible through the APMEX links
 
 ## Updates and releases
 
-Installed copies use `electron-updater` and the public GitHub Releases feed. Checks run on startup, every four hours, and through Check for updates. Downloads happen automatically; installation requires choosing Restart and update. The app does not embed GitHub credentials.
+Installed copies use `electron-updater` and the public GitHub Releases feed. Checks run on startup, every four hours, and through Check for updates. Downloads happen automatically; choose **Updates & backups → Back up & install update** to install. Installation on ordinary exit is disabled so it cannot bypass the backup gate. The app does not embed GitHub credentials.
 
-The Windows workflow tests the financial calculations and parser, launches the renderer for a manual-price smoke test, builds NSIS, uploads build artifacts and publishes a new version if its release is absent. Bump `package.json` version and update `RELEASE_NOTES.md` for each release. Existing version assets are not overwritten.
+Before each in-app update, the app copies its complete installed application, saved coin catalog, premiums, chosen list and settings into a dated backup folder. Unsaved form values are recorded separately. Every copied file is verified with SHA-256 before installation starts. A failed or incomplete backup blocks installation. Keep the app open until it finishes; sufficient free disk space for another copy of the installed app is required.
+
+**Updates & backups** also provides **Back up now**, **Open backup folder** and **Restore shop data**. Backups are under `Backups` in the app's per-user data directory and are not automatically deleted. Keep each entire dated folder together, including `backup.json`, `RECOVERY.txt` and `application/`. Restore shop data verifies the selected backup, backs up current saved data first, then restores saved coins and settings. It does not replace the executable or automatically apply unsaved drafts or historical manual prices. The prior program files remain in `application/` for manual recovery, or reinstall the prior version from GitHub Releases.
+
+**First upgrade from v0.4.0 or earlier:** export your shop setup before installing v0.5.0. Older installed code cannot run this new backup gate. Automatic pre-update backups protect subsequent in-app updates from v0.5.0 onward. Running an installer directly outside the app does not invoke its backup gate.
+
+The Windows workflow tests pricing, parsing and backup failures, launches the renderer, builds NSIS, then creates and verifies a full backup from the packaged Windows app. Its installation callback is a test hook; it does not launch a real upgrade during CI. The workflow publishes the validation report and a new version if its release is absent. Bump `package.json` version and update `RELEASE_NOTES.md` for each release. Existing version assets are not overwritten.
 
 Shop rules are saved atomically to `settings.json` in Electron's per-user app-data directory. They survive installer updates. Live quotes are not saved or transmitted to a shop server. Network requests go to APMEX for prices and GitHub for updates; opening source links uses your default browser.
 
